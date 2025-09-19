@@ -6,10 +6,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"time"
 
-	helper "github.com/JonMunkholm/RevProject1/internal"
 	"github.com/JonMunkholm/RevProject1/internal/database"
 )
 
@@ -19,13 +19,13 @@ type Admin struct {
 }
 
 const domain = "http://localhost:8080"
-const coName = "Big Co."
-const usrName = "Delilah"
-const custName = "Big Spender USA"
+const coName = "Another Co."
+const usrName = "Terry"
+const custName = "LOL Co."
 
 
 func (u *Admin) QuickStart (w http.ResponseWriter, r *http.Request) {
-
+	//Create company and first user for the company
 	newCo := struct{
 			CompanyName	string `json:"CompanyName"`
 			UserName	string	`json:"UserName"`
@@ -35,40 +35,40 @@ func (u *Admin) QuickStart (w http.ResponseWriter, r *http.Request) {
 			}
 	urlNewCo := fmt.Sprintf("%v/companies", domain)
 
-	createCoResp, err := u.requestHelper(r.Context(), newCo, urlNewCo)
+	createCoResp, err := u.createNewRecord(r.Context(), newCo, urlNewCo)
 	if err != nil {
-		helper.RespondWithError(w, http.StatusInternalServerError, "Failed to create new company:", err)
+		RespondWithError(w, http.StatusInternalServerError, "Failed to create new company:", err)
 		return
 	}
 
 	// top-level object
 	m, ok := createCoResp.(map[string]any)
 	if !ok {
-		helper.RespondWithError(w, http.StatusInternalServerError, "", errors.New("expected object at top level"))
+		RespondWithError(w, http.StatusInternalServerError, "", errors.New("expected object at top level"))
 		return
 	}
 
 	// nested object(s)
 	company, ok := m["company"].(map[string]any)
 	if !ok {
-		helper.RespondWithError(w, http.StatusInternalServerError, "", errors.New("missing company field"))
+		RespondWithError(w, http.StatusInternalServerError, "", errors.New("missing company field"))
 		return
 	}
 
 	user, ok := m["user"].(map[string]any)
 	if !ok {
-		helper.RespondWithError(w, http.StatusInternalServerError, "", errors.New("missing user field"))
+		RespondWithError(w, http.StatusInternalServerError, "", errors.New("missing user field"))
 		return
 	}
 
 	// field value
 	companyID, ok := company["ID"].(string)
 	if !ok {
-		helper.RespondWithError(w, http.StatusInternalServerError, "", errors.New("missing CompanyID field"))
+		RespondWithError(w, http.StatusInternalServerError, "", errors.New("missing CompanyID field"))
 		return
 	}
 
-
+	//pipe output from creating company into creating first customer of company
 	newCust := struct{
 			CompanyID	string `json:"CompanyID"`
 			CustomerName	string	`json:"CustomerName"`
@@ -78,15 +78,15 @@ func (u *Admin) QuickStart (w http.ResponseWriter, r *http.Request) {
 			}
 	urlNewCust := fmt.Sprintf("%v/customers", domain)
 
-	createCustResp, err := u.requestHelper(r.Context(), newCust, urlNewCust)
+	createCustResp, err := u.createNewRecord(r.Context(), newCust, urlNewCust)
 	if err != nil {
-		helper.RespondWithError(w, http.StatusInternalServerError, "Failed to create new customer:", err)
+		RespondWithError(w, http.StatusInternalServerError, "Failed to create new customer:", err)
 		return
 	}
 
 	data, err := json.Marshal(map[string]interface{}{"company": company, "user": user, "customer": createCustResp})
 	if err != nil {
-		helper.RespondWithError(w, http.StatusInternalServerError, "Failed to marshal data:", err)
+		RespondWithError(w, http.StatusInternalServerError, "Failed to marshal data:", err)
 		return
 	}
 
@@ -101,7 +101,7 @@ func (u *Admin) Reset (w http.ResponseWriter, r *http.Request) {
 
 	err := u.DB.ResetCompanies(ctx)
 	if err != nil {
-		helper.RespondWithError(w, http.StatusInternalServerError, "Failed to get reset DB:", err)
+		RespondWithError(w, http.StatusInternalServerError, "Failed to get reset DB:", err)
 		return
 	}
 
@@ -110,7 +110,7 @@ func (u *Admin) Reset (w http.ResponseWriter, r *http.Request) {
 
 
 
-func (u *Admin) requestHelper (ctx context.Context, reqBody interface{}, url string) (interface{}, error) {
+func (u *Admin) createNewRecord (ctx context.Context, reqBody interface{}, url string) (interface{}, error) {
 	ctx, cancel := context.WithTimeout(ctx, time.Second * 20)
 	defer cancel()
 
@@ -146,4 +146,38 @@ func (u *Admin) requestHelper (ctx context.Context, reqBody interface{}, url str
 	}
 
 	return respJson, nil
+}
+
+
+
+
+
+
+
+
+func RespondWithError(w http.ResponseWriter, code int, msg string, err error) {
+	if err != nil {
+		log.Println(err)
+	}
+	if code > 499 {
+		log.Printf("Responding with 5XX error: %s", msg)
+	}
+	type errorResponse struct {
+		Error string `json:"error"`
+	}
+	RespondWithJSON(w, code, errorResponse{
+		Error: msg,
+	})
+}
+
+func RespondWithJSON(w http.ResponseWriter, code int, payload interface{}) {
+	w.Header().Set("Content-Type", "application/json")
+	dat, err := json.Marshal(payload)
+	if err != nil {
+		log.Printf("Error marshalling JSON: %s", err)
+		w.WriteHeader(500)
+		return
+	}
+	w.WriteHeader(code)
+	w.Write(dat)
 }

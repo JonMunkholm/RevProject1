@@ -78,54 +78,29 @@ func (q *Queries) CreateProduct(ctx context.Context, arg CreateProductParams) (P
 	return i, err
 }
 
-const deleteAllProductsCompany = `-- name: DeleteAllProductsCompany :many
+const deleteAllProductsCompany = `-- name: DeleteAllProductsCompany :exec
 SELECT id, prod_name, rev_assessment, over_time_percent, point_in_time_percent, standalone_selling_price_method, standalone_selling_price_price_high, standalone_selling_price_price_low, company_id, is_active, default_currency, created_at FROM products
 WHERE Company_ID = $1
 `
 
-func (q *Queries) DeleteAllProductsCompany(ctx context.Context, companyID uuid.UUID) ([]Product, error) {
-	rows, err := q.db.QueryContext(ctx, deleteAllProductsCompany, companyID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []Product
-	for rows.Next() {
-		var i Product
-		if err := rows.Scan(
-			&i.ID,
-			&i.ProdName,
-			&i.RevAssessment,
-			&i.OverTimePercent,
-			&i.PointInTimePercent,
-			&i.StandaloneSellingPriceMethod,
-			&i.StandaloneSellingPricePriceHigh,
-			&i.StandaloneSellingPricePriceLow,
-			&i.CompanyID,
-			&i.IsActive,
-			&i.DefaultCurrency,
-			&i.CreatedAt,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) DeleteAllProductsCompany(ctx context.Context, companyID uuid.UUID) error {
+	_, err := q.db.ExecContext(ctx, deleteAllProductsCompany, companyID)
+	return err
 }
 
 const deleteProduct = `-- name: DeleteProduct :exec
 DELETE FROM products
 WHERE ID = $1
+AND Company_ID = $2
 `
 
-func (q *Queries) DeleteProduct(ctx context.Context, id uuid.UUID) error {
-	_, err := q.db.ExecContext(ctx, deleteProduct, id)
+type DeleteProductParams struct {
+	ID        uuid.UUID
+	CompanyID uuid.UUID
+}
+
+func (q *Queries) DeleteProduct(ctx context.Context, arg DeleteProductParams) error {
+	_, err := q.db.ExecContext(ctx, deleteProduct, arg.ID, arg.CompanyID)
 	return err
 }
 
@@ -213,10 +188,16 @@ func (q *Queries) GetAllProductsCompany(ctx context.Context, companyID uuid.UUID
 const getProduct = `-- name: GetProduct :one
 SELECT id, prod_name, rev_assessment, over_time_percent, point_in_time_percent, standalone_selling_price_method, standalone_selling_price_price_high, standalone_selling_price_price_low, company_id, is_active, default_currency, created_at FROM products
 WHERE ID = $1
+AND Company_ID = $2
 `
 
-func (q *Queries) GetProduct(ctx context.Context, id uuid.UUID) (Product, error) {
-	row := q.db.QueryRowContext(ctx, getProduct, id)
+type GetProductParams struct {
+	ID        uuid.UUID
+	CompanyID uuid.UUID
+}
+
+func (q *Queries) GetProduct(ctx context.Context, arg GetProductParams) (Product, error) {
+	row := q.db.QueryRowContext(ctx, getProduct, arg.ID, arg.CompanyID)
 	var i Product
 	err := row.Scan(
 		&i.ID,

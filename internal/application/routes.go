@@ -21,6 +21,9 @@ func (a *App) loadRoutes () {
 	r.Route("/users", a.loadUserRoutes)
 	r.Route("/companies", a.loadCompanyRoutes)
 	r.Route("/customers", a.loadCustomerRoutes)
+	r.Route("/products", a.loadProductRoutes)
+	r.Route("/contracts", a.loadContractRoutes)
+
 	r.Route("/admin", a.loadAdminRoutes)
 
 
@@ -67,7 +70,31 @@ func (a *App) loadCustomerRoutes (r chi.Router) {
 	r.Delete("/{id}", companyHandler.DeleteById)
 }
 
+func (a *App) loadProductRoutes (r chi.Router) {
+	//allows for additional routs to be added easier
+	productHandler := &handler.Product{
+		DB: a.db,
+	}
 
+	r.Post("/", productHandler.Create)
+	r.Get("/", productHandler.List)
+	r.Get("/{id}", productHandler.GetById)
+	r.Put("/{id}", productHandler.UpdateById)
+	r.Delete("/{id}", productHandler.DeleteById)
+}
+
+func (a *App) loadContractRoutes (r chi.Router) {
+	//allows for additional routs to be added easier
+	contractHandler := &handler.Contract{
+		DB: a.db,
+	}
+
+	r.Post("/", contractHandler.Create)
+	r.Get("/", contractHandler.List)
+	r.Get("/{id}", contractHandler.GetById)
+	r.Put("/{id}", contractHandler.UpdateById)
+	r.Delete("/{id}", contractHandler.DeleteById)
+}
 
 
 func (a *App) loadAdminRoutes (r chi.Router) {

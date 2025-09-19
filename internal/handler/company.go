@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"time"
 
-	helper "github.com/JonMunkholm/RevProject1/internal"
 	"github.com/JonMunkholm/RevProject1/internal/database"
 	"github.com/go-chi/chi"
 	"github.com/google/uuid"
@@ -18,7 +17,7 @@ type Company struct {
 	DB *database.Queries
 }
 
-func (u *Company) Create (w http.ResponseWriter, r *http.Request) {
+func (c *Company) Create (w http.ResponseWriter, r *http.Request) {
 	decoder := json.NewDecoder(r.Body)
 	request := struct {
 		CompanyName	string `json:"CompanyName"`
@@ -26,18 +25,17 @@ func (u *Company) Create (w http.ResponseWriter, r *http.Request) {
 	}{}
 
 	err := decoder.Decode(&request)
-
 	if err != nil {
-		helper.RespondWithError(w, http.StatusInternalServerError,"Error decoding request", err)
+		RespondWithError(w, http.StatusBadRequest,"Error decoding request", err)
 		return
 	}
 
-	timeout, cancel := context.WithTimeout(context.Background(), time.Second * 10)
+	ctx, cancel := context.WithTimeout(r.Context(), time.Second * 10)
 	defer cancel()
 
-	company, err := u.DB.CreateCompany(timeout, request.CompanyName)
+	company, err := c.DB.CreateCompany(ctx, request.CompanyName)
 	if err != nil {
-		helper.RespondWithError(w, http.StatusInternalServerError, "Failed to create Company:", err)
+		RespondWithError(w, http.StatusInternalServerError, "Failed to create Company:", err)
 		return
 	}
 
@@ -46,9 +44,9 @@ func (u *Company) Create (w http.ResponseWriter, r *http.Request) {
 		CompanyID: company.ID,
 	}
 
-	user, err := u.DB.CreateUser(timeout, firstUser)
+	user, err := c.DB.CreateUser(ctx, firstUser)
 	if err != nil {
-		helper.RespondWithError(w, http.StatusInternalServerError, "Failed to create user:", err)
+		RespondWithError(w, http.StatusInternalServerError, "Failed to create user:", err)
 		return
 	}
 
@@ -62,7 +60,7 @@ func (u *Company) Create (w http.ResponseWriter, r *http.Request) {
 
 	data, err := json.Marshal(res)
 	if err != nil {
-		helper.RespondWithError(w, http.StatusInternalServerError, "Error marshaling response:", err)
+		RespondWithError(w, http.StatusInternalServerError, "Error marshaling response:", err)
 		return
 	}
 
@@ -70,19 +68,19 @@ func (u *Company) Create (w http.ResponseWriter, r *http.Request) {
 	w.Write(data)
 }
 
-func (u *Company) List (w http.ResponseWriter, r *http.Request) {
-	timeout, cancel := context.WithTimeout(context.Background(), time.Second * 10)
+func (c *Company) List (w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), time.Second * 10)
 	defer cancel()
 
-	companies, err := u.DB.GetAllCompanies(timeout)
+	companies, err := c.DB.GetAllCompanies(ctx)
 	if err != nil {
-		helper.RespondWithError(w, http.StatusInternalServerError, "Failed to retrieve companies list:", err)
+		RespondWithError(w, http.StatusInternalServerError, "Failed to retrieve companies list:", err)
 		return
 	}
 
 	res, err := json.Marshal(companies)
 	if err != nil {
-		helper.RespondWithError(w, http.StatusInternalServerError, "Failed to marshal response:", err)
+		RespondWithError(w, http.StatusInternalServerError, "Failed to marshal response:", err)
 		return
 	}
 
@@ -90,27 +88,27 @@ func (u *Company) List (w http.ResponseWriter, r *http.Request) {
 	w.Write(res)
 }
 
-func (u *Company) GetById (w http.ResponseWriter, r *http.Request) {
+func (c *Company) GetById (w http.ResponseWriter, r *http.Request) {
 	companyIDString := chi.URLParam(r,"id")
 	fmt.Println(companyIDString)
 	companyID, err := uuid.Parse(companyIDString)
 	if err != nil {
-		helper.RespondWithError(w, http.StatusInternalServerError, "Failed to parse id to UUID:", err)
+		RespondWithError(w, http.StatusNotFound, "Failed to parse id to UUID:", err)
 		return
 	}
 
-	timeout, cancel := context.WithTimeout(context.Background(), time.Second * 10)
+	ctx, cancel := context.WithTimeout(r.Context(), time.Second * 10)
 	defer cancel()
 
-	company, err := u.DB.GetCompany(timeout, companyID)
+	company, err := c.DB.GetCompany(ctx, companyID)
 	if err != nil {
-		helper.RespondWithError(w, http.StatusInternalServerError, "Failed to get company by ID:", err)
+		RespondWithError(w, http.StatusInternalServerError, "Failed to get company by ID:", err)
 		return
 	}
 
 	res, err := json.Marshal(company)
 	if err != nil {
-		helper.RespondWithError(w, http.StatusInternalServerError, "Failed to marshal response:", err)
+		RespondWithError(w, http.StatusInternalServerError, "Failed to marshal response:", err)
 		return
 	}
 
@@ -118,25 +116,25 @@ func (u *Company) GetById (w http.ResponseWriter, r *http.Request) {
 	w.Write(res)
 }
 
-func (u *Company) UpdateById (w http.ResponseWriter, r *http.Request) {
+func (c *Company) UpdateById (w http.ResponseWriter, r *http.Request) {
 	//no query support for this currently
 }
 
-func (u *Company) DeleteById (w http.ResponseWriter, r *http.Request) {
+func (c *Company) DeleteById (w http.ResponseWriter, r *http.Request) {
 	companyIDString := chi.URLParam(r,"id")
 
 	companyID, err := uuid.Parse(companyIDString)
 	if err != nil {
-		helper.RespondWithError(w, http.StatusInternalServerError, "Failed to parse id to UUID:", err)
+		RespondWithError(w, http.StatusNotFound, "Failed to parse id to UUID:", err)
 		return
 	}
 
-	timeout, cancel := context.WithTimeout(context.Background(), time.Second * 10)
+	ctx, cancel := context.WithTimeout(r.Context(), time.Second * 10)
 	defer cancel()
 
-	err = u.DB.DeleteCompany(timeout, companyID)
+	err = c.DB.DeleteCompany(ctx, companyID)
 	if err != nil {
-		helper.RespondWithError(w, http.StatusInternalServerError, "Failed to get company by ID:", err)
+		RespondWithError(w, http.StatusInternalServerError, "Failed to get company by ID:", err)
 		return
 	}
 
