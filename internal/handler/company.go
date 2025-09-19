@@ -3,8 +3,10 @@ package handler
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/JonMunkholm/RevProject1/internal/database"
@@ -17,55 +19,67 @@ type Company struct {
 	DB *database.Queries
 }
 
+type createCompanyRequest struct {
+    CompanyName string `json:"CompanyName"`
+    UserName    string `json:"UserName"`
+}
+
+type createCompanyArgs struct {
+    CompanyName string
+    UserName    string
+}
+
+type createCompanyResponse struct {
+    Company database.Company `json:"company"`
+    User    database.User    `json:"user"`
+}
+
 func (c *Company) Create (w http.ResponseWriter, r *http.Request) {
-	decoder := json.NewDecoder(r.Body)
-	request := struct {
-		CompanyName	string `json:"CompanyName"`
-		UserName	string	`json:"UserName"`
-	}{}
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+    defer cancel()
 
-	err := decoder.Decode(&request)
-	if err != nil {
-		RespondWithError(w, http.StatusBadRequest,"Error decoding request", err)
-		return
-	}
+    _, _ = createRecord(
+        ctx,
+        w,
+        r,
+        func() createCompanyRequest { return createCompanyRequest{} },
+        func(req createCompanyRequest) (createCompanyArgs, error) {
+            companyName := strings.TrimSpace(req.CompanyName)
+            userName := strings.TrimSpace(req.UserName)
 
-	ctx, cancel := context.WithTimeout(r.Context(), time.Second * 10)
-	defer cancel()
+            switch {
+            case companyName == "":
+                return createCompanyArgs{}, errors.New("CompanyName is required")
+            case userName == "":
+                return createCompanyArgs{}, errors.New("UserName is required")
+            default:
+                return createCompanyArgs{
+                    CompanyName: companyName,
+                    UserName:    userName,
+                }, nil
+            }
+        },
+        func(ctx context.Context, params createCompanyArgs) (createCompanyResponse, error) {
+            company, err := c.DB.CreateCompany(ctx, params.CompanyName)
+            if err != nil {
+                return createCompanyResponse{}, err
+            }
 
-	company, err := c.DB.CreateCompany(ctx, request.CompanyName)
-	if err != nil {
-		RespondWithError(w, http.StatusInternalServerError, "Failed to create Company:", err)
-		return
-	}
+            user, err := c.DB.CreateUser(ctx, database.CreateUserParams{
+                UserName:  params.UserName,
+                CompanyID: company.ID,
+            })
+            if err != nil {
+                return createCompanyResponse{}, err
+            }
 
-	firstUser := database.CreateUserParams{
-		UserName: request.UserName,
-		CompanyID: company.ID,
-	}
-
-	user, err := c.DB.CreateUser(ctx, firstUser)
-	if err != nil {
-		RespondWithError(w, http.StatusInternalServerError, "Failed to create user:", err)
-		return
-	}
-
-	res := struct{
-		Company 	database.Company  `json:"company"`
-		User		database.User	  `json:"user"`
-	}{
-		Company: company,
-		User: user,
-	}
-
-	data, err := json.Marshal(res)
-	if err != nil {
-		RespondWithError(w, http.StatusInternalServerError, "Error marshaling response:", err)
-		return
-	}
-
-	w.WriteHeader(http.StatusCreated)
-	w.Write(data)
+            return createCompanyResponse{
+                Company: company,
+                User:    user,
+            }, nil
+        },
+        http.StatusCreated,
+    )
 }
 
 func (c *Company) List (w http.ResponseWriter, r *http.Request) {

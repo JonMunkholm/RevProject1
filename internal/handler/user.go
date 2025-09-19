@@ -16,42 +16,33 @@ type User struct {
 	DB *database.Queries
 }
 
-func (u *User) Create (w http.ResponseWriter, r *http.Request) {
-	decoder := json.NewDecoder(r.Body)
-	request := struct {
-		UserName  string	`json:"UserName"`
-		CompanyID uuid.UUID	`json:"CompanyID"`
-	}{}
-
-	err := decoder.Decode(&request)
-	if err != nil {
-		RespondWithError(w, http.StatusBadRequest,"Error decoding request", err)
-		return
-	}
-
-	ctx, cancel := context.WithTimeout(r.Context(), time.Second * 10)
-	defer cancel()
-
-	dbReq := database.CreateUserParams{
-		UserName: request.UserName,
-		CompanyID: request.CompanyID,
-	}
-	user, err := u.DB.CreateUser(ctx, dbReq)
-
-	if err != nil {
-		RespondWithError(w, http.StatusInternalServerError, "Failed to create user:", err)
-		return
-	}
-
-	data, err := json.Marshal(user)
-	if err != nil {
-		RespondWithError(w, http.StatusInternalServerError, "Error marshaling response:", err)
-		return
-	}
-
-	w.WriteHeader(http.StatusCreated)
-	w.Write(data)
+type createUserRequest struct {
+    UserName  string    `json:"UserName"`
+    CompanyID uuid.UUID `json:"CompanyID"`
 }
+
+func (u *User) Create(w http.ResponseWriter, r *http.Request) {
+    ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+    defer cancel()
+
+    _, _ = createRecord(
+        ctx,
+        w,
+        r,
+        func() createUserRequest { return createUserRequest{} },
+        func(req createUserRequest) (database.CreateUserParams, error) {
+            return database.CreateUserParams{
+                UserName:  req.UserName,
+                CompanyID: req.CompanyID,
+            }, nil
+        },
+        func(ctx context.Context, params database.CreateUserParams) (database.User, error) {
+            return u.DB.CreateUser(ctx, params)
+        },
+        http.StatusCreated,
+    )
+}
+
 
 func (u *User) List (w http.ResponseWriter, r *http.Request) {
 	decoder := json.NewDecoder(r.Body)

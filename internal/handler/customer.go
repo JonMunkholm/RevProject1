@@ -16,41 +16,33 @@ type Customer struct {
 	DB *database.Queries
 }
 
+type createCustomerRequest struct {
+    CustomerName  	string		`json:"CustomerName"`
+	CompanyID 		uuid.UUID	`json:"CompanyID"`
+}
+
 func (c *Customer) Create (w http.ResponseWriter, r *http.Request) {
-	decoder := json.NewDecoder(r.Body)
-	request := struct {
-		CustomerName  	string		`json:"CustomerName"`
-		CompanyID 		uuid.UUID	`json:"CompanyID"`
-	}{}
 
-	err := decoder.Decode(&request)
-	if err != nil {
-		RespondWithError(w, http.StatusBadRequest,"Error decoding request", err)
-		return
-	}
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+    defer cancel()
 
-	ctx, cancel := context.WithTimeout(r.Context(), time.Second * 10)
-	defer cancel()
+    _, _ = createRecord(
+        ctx,
+        w,
+        r,
+        func() createCustomerRequest { return createCustomerRequest{} },
+        func(req createCustomerRequest) (database.CreateCustomerParams, error) {
+            return database.CreateCustomerParams{
+                CustomerName:  	req.CustomerName,
+                CompanyID: 		req.CompanyID,
+            }, nil
+        },
+        func(ctx context.Context, params database.CreateCustomerParams) (database.Customer, error) {
+            return c.DB.CreateCustomer(ctx, params)
+        },
+        http.StatusCreated,
+    )
 
-	dbReq := database.CreateCustomerParams{
-		CustomerName: request.CustomerName,
-		CompanyID: request.CompanyID,
-	}
-	Customer, err := c.DB.CreateCustomer(ctx, dbReq)
-
-	if err != nil {
-		RespondWithError(w, http.StatusInternalServerError, "Failed to create Customer:", err)
-		return
-	}
-
-	data, err := json.Marshal(Customer)
-	if err != nil {
-		RespondWithError(w, http.StatusInternalServerError, "Error marshaling response:", err)
-		return
-	}
-
-	w.WriteHeader(http.StatusCreated)
-	w.Write(data)
 }
 
 func (c *Customer) List (w http.ResponseWriter, r *http.Request) {
