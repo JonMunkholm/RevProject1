@@ -59,15 +59,15 @@ func (a *App) loadCompanyRoutes (r chi.Router) {
 
 func (a *App) loadCustomerRoutes (r chi.Router) {
 	//allows for additional routs to be added easier
-	companyHandler := &handler.Customer{
+	customerHandler := &handler.Customer{
 		DB: a.db,
 	}
 
-	r.Post("/", companyHandler.Create)
-	r.Get("/", companyHandler.List)
-	r.Get("/{id}", companyHandler.GetById)
-	r.Put("/{id}", companyHandler.UpdateById)
-	r.Delete("/{id}", companyHandler.DeleteById)
+	r.Post("/", customerHandler.Create)
+	r.Get("/", customerHandler.List)
+	r.Get("/{id}", customerHandler.GetById)
+	r.Put("/{id}", customerHandler.UpdateById)
+	r.Delete("/{id}", customerHandler.DeleteById)
 }
 
 func (a *App) loadProductRoutes (r chi.Router) {

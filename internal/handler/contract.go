@@ -3,7 +3,6 @@ package handler
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
@@ -18,130 +17,114 @@ type Contract struct {
 	DB *database.Queries
 }
 
+type createContract struct {
+	CompanyID   uuid.UUID `json:"CompanyID"`
+	CustomerID  uuid.UUID `json:"CustomerID"`
+	StartDate   time.Time `json:"StartDate"`
+	EndDate     time.Time `json:"EndDate"`
+	IsFinal     bool      `json:"IsFinal"`
+	ContractUrl *string   `json:"ContractUrl"`
+}
+
+type companyContractsRequest struct {
+	CompanyID uuid.UUID `json:"CompanyID"`
+}
+
 func (c *Contract) Create(w http.ResponseWriter, r *http.Request) {
-	decoder := json.NewDecoder(r.Body)
-	request := struct {
-		CompanyID   uuid.UUID      `json:"CompanyID"`
-		CustomerID  uuid.UUID      `json:"CustomerID"`
-		StartDate   time.Time      `json:"StartDate"`
-		EndDate     time.Time      `json:"EndDate"`
-		IsFinal     bool           `json:"IsFinal"`
-		ContractUrl sql.NullString `json:"ContractUrl"`
-	}{}
 
-	err := decoder.Decode(&request)
-	if err != nil {
-		RespondWithError(w, http.StatusBadRequest, "Error decoding request", err)
-		return
-	}
-
-	ctx, cancel := context.WithTimeout(r.Context(), time.Second*10)
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 
-	dbReq := database.CreateContractParams{
-		CompanyID:   request.CompanyID,
-		CustomerID:  request.CustomerID,
-		StartDate:   request.StartDate,
-		EndDate:     request.EndDate,
-		IsFinal:     request.IsFinal,
-		ContractUrl: request.ContractUrl,
-	}
-	if err := c.contractInputValidation(&dbReq); err != nil {
-		RespondWithError(w, http.StatusBadRequest, "Invalid contract payload:", err)
-		return
-	}
+	_, _ = processRequest(
+		ctx,
+		w,
+		r,
+		func() createContract { return createContract{} },
+		func(req createContract) (database.CreateContractParams, error) {
+			contractURL := sql.NullString{}
+			if req.ContractUrl != nil {
+				trimmed := strings.TrimSpace(*req.ContractUrl)
+				if trimmed != "" {
+					contractURL = sql.NullString{String: trimmed, Valid: true}
+				}
+			}
 
-	contracts, err := c.DB.CreateContract(ctx, dbReq)
+			dbReq := database.CreateContractParams{
+				CompanyID:   req.CompanyID,
+				CustomerID:  req.CustomerID,
+				StartDate:   req.StartDate,
+				EndDate:     req.EndDate,
+				IsFinal:     req.IsFinal,
+				ContractUrl: contractURL,
+			}
 
-	if err != nil {
-		RespondWithError(w, http.StatusInternalServerError, "Failed to create contracts:", err)
-		return
-	}
+			if err := c.contractInputValidation(&dbReq); err != nil {
+				return dbReq, err
+			}
+			return dbReq, nil
+		},
+		func(ctx context.Context, params database.CreateContractParams) (database.Contract, error) {
+			return c.DB.CreateContract(ctx, params)
+		},
+		http.StatusCreated,
+	)
 
-	data, err := json.Marshal(contracts)
-	if err != nil {
-		RespondWithError(w, http.StatusInternalServerError, "Error marshaling response:", err)
-		return
-	}
-
-	w.WriteHeader(http.StatusCreated)
-	w.Write(data)
 }
 
 func (c *Contract) List(w http.ResponseWriter, r *http.Request) {
-	decoder := json.NewDecoder(r.Body)
-	request := struct {
-		CompanyID uuid.UUID `json:"CompanyID"`
-	}{}
 
-	err := decoder.Decode(&request)
-	if err != nil {
-		RespondWithError(w, http.StatusBadRequest, "Error decoding request", err)
-		return
-	}
-
-	ctx, cancel := context.WithTimeout(r.Context(), time.Second*10)
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 
-	contracts, err := c.DB.GetAllContractsCompany(ctx, request.CompanyID)
+	_, _ = processRequest(
+		ctx,
+		w,
+		r,
+		func() companyContractsRequest { return companyContractsRequest{} },
+		func(req companyContractsRequest) (uuid.UUID, error) {
+			return companyIDFromRequest(req.CompanyID)
+		},
+		func(ctx context.Context, param uuid.UUID) ([]database.Contract, error) {
+			return c.DB.GetAllContractsCompany(ctx, param)
+		},
+		http.StatusOK,
+	)
 
-	if err != nil {
-		RespondWithError(w, http.StatusInternalServerError, "Failed to create contracts:", err)
-		return
-	}
-
-	data, err := json.Marshal(contracts)
-	if err != nil {
-		RespondWithError(w, http.StatusInternalServerError, "Error marshaling response:", err)
-		return
-	}
-
-	w.WriteHeader(http.StatusOK)
-	w.Write(data)
 }
 
 func (c *Contract) GetById(w http.ResponseWriter, r *http.Request) {
-	contractIDString := chi.URLParam(r, "id")
 
-	contractID, err := uuid.Parse(contractIDString)
+	contractID, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
 		RespondWithError(w, http.StatusBadRequest, "Error missing or invalid contract ID:", err)
 		return
 	}
 
-	decoder := json.NewDecoder(r.Body)
-	request := struct {
-		CompanyID uuid.UUID `json:"CompanyID"`
-	}{}
-
-	err = decoder.Decode(&request)
-	if err != nil {
-		RespondWithError(w, http.StatusBadRequest, "Error decoding request", err)
-		return
-	}
-
-	ctx, cancel := context.WithTimeout(r.Context(), time.Second*10)
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 
-	dbReq := database.GetContractParams{
-		ID:			 contractID,
-		CompanyID:   request.CompanyID,
-	}
-	contracts, err := c.DB.GetContract(ctx, dbReq)
+	_, _ = processRequest(
+		ctx,
+		w,
+		r,
+		func() companyContractsRequest { return companyContractsRequest{} },
+		func(req companyContractsRequest) (database.GetContractParams, error) {
+			companyID, err := companyIDFromRequest(req.CompanyID)
+			if err != nil {
+				return database.GetContractParams{}, err
+			}
 
-	if err != nil {
-		RespondWithError(w, http.StatusInternalServerError, "Failed to create contracts:", err)
-		return
-	}
+			return database.GetContractParams{
+				ID:        contractID,
+				CompanyID: companyID,
+			}, nil
+		},
+		func(ctx context.Context, param database.GetContractParams) (database.Contract, error) {
+			return c.DB.GetContract(ctx, param)
+		},
+		http.StatusOK,
+	)
 
-	data, err := json.Marshal(contracts)
-	if err != nil {
-		RespondWithError(w, http.StatusInternalServerError, "Error marshaling response:", err)
-		return
-	}
-
-	w.WriteHeader(http.StatusOK)
-	w.Write(data)
 }
 
 func (c *Contract) UpdateById(w http.ResponseWriter, r *http.Request) {
@@ -149,40 +132,38 @@ func (c *Contract) UpdateById(w http.ResponseWriter, r *http.Request) {
 }
 
 func (c *Contract) DeleteById(w http.ResponseWriter, r *http.Request) {
-	contractIDString := chi.URLParam(r, "id")
 
-	contractID, err := uuid.Parse(contractIDString)
+	contractID, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
 		RespondWithError(w, http.StatusBadRequest, "Error missing or invalid contract ID:", err)
 		return
 	}
 
-	decoder := json.NewDecoder(r.Body)
-	request := struct {
-		CompanyID uuid.UUID `json:"CompanyID"`
-	}{}
-
-	err = decoder.Decode(&request)
-	if err != nil {
-		RespondWithError(w, http.StatusBadRequest, "Error decoding request", err)
-		return
-	}
-
-	ctx, cancel := context.WithTimeout(r.Context(), time.Second*10)
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 
-	dbReq := database.DeleteContractParams{
-		ID:			 contractID,
-		CompanyID:   request.CompanyID,
-	}
+	_, _ = processRequest(
+		ctx,
+		w,
+		r,
+		func() companyContractsRequest { return companyContractsRequest{} },
+		func(req companyContractsRequest) (database.DeleteContractParams, error) {
+			companyID, err := companyIDFromRequest(req.CompanyID)
+			if err != nil {
+				return database.DeleteContractParams{}, err
+			}
 
-	err = c.DB.DeleteContract(ctx, dbReq)
-	if err != nil {
-		RespondWithError(w, http.StatusInternalServerError, "Failed to create contracts:", err)
-		return
-	}
+			return database.DeleteContractParams{
+				ID:        contractID,
+				CompanyID: companyID,
+			}, nil
+		},
+		func(ctx context.Context, param database.DeleteContractParams) (struct{}, error) {
+			return struct{}{}, c.DB.DeleteContract(ctx, param)
+		},
+		http.StatusOK,
+	)
 
-	w.WriteHeader(http.StatusOK)
 }
 
 func (c *Contract) contractInputValidation(ct *database.CreateContractParams) error {

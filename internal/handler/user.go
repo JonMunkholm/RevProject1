@@ -2,7 +2,6 @@ package handler
 
 import (
 	"context"
-	"encoding/json"
 	"net/http"
 	"time"
 
@@ -11,153 +10,138 @@ import (
 	"github.com/google/uuid"
 )
 
-
 type User struct {
 	DB *database.Queries
 }
 
 type createUserRequest struct {
-    UserName  string    `json:"UserName"`
-    CompanyID uuid.UUID `json:"CompanyID"`
+	UserName  string    `json:"UserName"`
+	CompanyID uuid.UUID `json:"CompanyID"`
+}
+
+type companyUsersRequest struct {
+	CompanyID uuid.UUID `json:"CompanyID"`
 }
 
 func (u *User) Create(w http.ResponseWriter, r *http.Request) {
-    ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
-    defer cancel()
 
-    _, _ = createRecord(
-        ctx,
-        w,
-        r,
-        func() createUserRequest { return createUserRequest{} },
-        func(req createUserRequest) (database.CreateUserParams, error) {
-            return database.CreateUserParams{
-                UserName:  req.UserName,
-                CompanyID: req.CompanyID,
-            }, nil
-        },
-        func(ctx context.Context, params database.CreateUserParams) (database.User, error) {
-            return u.DB.CreateUser(ctx, params)
-        },
-        http.StatusCreated,
-    )
-}
-
-
-func (u *User) List (w http.ResponseWriter, r *http.Request) {
-	decoder := json.NewDecoder(r.Body)
-	request := struct {
-		CompanyID 	uuid.UUID	`json:"CompanyID"`
-	}{}
-
-	err := decoder.Decode(&request)
-	if err != nil {
-		RespondWithError(w, http.StatusBadRequest,"Error decoding request", err)
-		return
-	}
-
-	ctx, cancel := context.WithTimeout(r.Context(), time.Second * 10)
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 
-	users, err := u.DB.GetAllUsersCompany(ctx, request.CompanyID)
+	_, _ = processRequest(
+		ctx,
+		w,
+		r,
+		func() createUserRequest { return createUserRequest{} },
+		func(req createUserRequest) (database.CreateUserParams, error) {
+			companyID, err := companyIDFromRequest(req.CompanyID)
+			if err != nil {
+				return database.CreateUserParams{}, err
+			}
 
-	if err != nil {
-		RespondWithError(w, http.StatusInternalServerError, "Failed to create users:", err)
-		return
-	}
-
-	data, err := json.Marshal(users)
-	if err != nil {
-		RespondWithError(w, http.StatusInternalServerError, "Error marshaling response:", err)
-		return
-	}
-
-	w.WriteHeader(http.StatusOK)
-	w.Write(data)
+			return database.CreateUserParams{
+				UserName:  req.UserName,
+				CompanyID: companyID,
+			}, nil
+		},
+		func(ctx context.Context, params database.CreateUserParams) (database.User, error) {
+			return u.DB.CreateUser(ctx, params)
+		},
+		http.StatusCreated,
+	)
 }
 
-func (u *User) GetById (w http.ResponseWriter, r *http.Request) {
-	userIDString := chi.URLParam(r,"id")
+func (u *User) List(w http.ResponseWriter, r *http.Request) {
 
-	userID, err := uuid.Parse(userIDString)
-	if err != nil {
-		RespondWithError(w, http.StatusBadRequest,"Error missing or invalid user ID:", err)
-		return
-	}
-
-	decoder := json.NewDecoder(r.Body)
-	request := struct {
-		CompanyID 	uuid.UUID	`json:"CompanyID"`
-	}{}
-
-	err = decoder.Decode(&request)
-	if err != nil {
-		RespondWithError(w, http.StatusBadRequest,"Error decoding request", err)
-		return
-	}
-
-	ctx, cancel := context.WithTimeout(r.Context(), time.Second * 10)
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 
-	dbReq := database.GetUserParams{
-		ID: userID,
-		CompanyID: request.CompanyID,
-	}
-	user, err := u.DB.GetUser(ctx, dbReq)
+	_, _ = processRequest(
+		ctx,
+		w,
+		r,
+		func() companyUsersRequest { return companyUsersRequest{} },
+		func(req companyUsersRequest) (uuid.UUID, error) {
+			return companyIDFromRequest(req.CompanyID)
+		},
+		func(ctx context.Context, param uuid.UUID) ([]database.User, error) {
+			return u.DB.GetAllUsersCompany(ctx, param)
+		},
+		http.StatusOK,
+	)
 
-	if err != nil {
-		RespondWithError(w, http.StatusInternalServerError, "Failed to create user:", err)
-		return
-	}
-
-	data, err := json.Marshal(user)
-	if err != nil {
-		RespondWithError(w, http.StatusInternalServerError, "Error marshaling response:", err)
-		return
-	}
-
-	w.WriteHeader(http.StatusOK)
-	w.Write(data)
 }
 
-func (u *User) UpdateById (w http.ResponseWriter, r *http.Request) {
+func (u *User) GetById(w http.ResponseWriter, r *http.Request) {
+
+	userID, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		RespondWithError(w, http.StatusBadRequest, "Error missing or invalid user ID:", err)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+
+	_, _ = processRequest(
+		ctx,
+		w,
+		r,
+		func() companyUsersRequest { return companyUsersRequest{} },
+		func(req companyUsersRequest) (database.GetUserParams, error) {
+			companyID, err := companyIDFromRequest(req.CompanyID)
+			if err != nil {
+				return database.GetUserParams{}, err
+			}
+
+			return database.GetUserParams{
+				ID:        userID,
+				CompanyID: companyID,
+			}, nil
+		},
+		func(ctx context.Context, param database.GetUserParams) (database.User, error) {
+			return u.DB.GetUser(ctx, param)
+		},
+		http.StatusOK,
+	)
+
+}
+
+func (u *User) UpdateById(w http.ResponseWriter, r *http.Request) {
 	//no query support for this currently
 }
 
-func (u *User) DeleteById (w http.ResponseWriter, r *http.Request) {
-	userIDString := chi.URLParam(r,"id")
+func (u *User) DeleteById(w http.ResponseWriter, r *http.Request) {
 
-	userID, err := uuid.Parse(userIDString)
+	userID, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
-		RespondWithError(w, http.StatusBadRequest,"Error missing or invalid user ID:", err)
+		RespondWithError(w, http.StatusBadRequest, "Error missing or invalid user ID:", err)
 		return
 	}
 
-	decoder := json.NewDecoder(r.Body)
-	request := struct {
-		CompanyID 	uuid.UUID	`json:"CompanyID"`
-	}{}
-
-	err = decoder.Decode(&request)
-	if err != nil {
-		RespondWithError(w, http.StatusBadRequest,"Error decoding request", err)
-		return
-	}
-
-	ctx, cancel := context.WithTimeout(r.Context(), time.Second * 10)
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 
-	dbReq := database.DeleteUserParams{
-		ID: userID,
-		CompanyID: request.CompanyID,
-	}
+	_, _ = processRequest(
+		ctx,
+		w,
+		r,
+		func() companyUsersRequest { return companyUsersRequest{} },
+		func(req companyUsersRequest) (database.DeleteUserParams, error) {
+			companyID, err := companyIDFromRequest(req.CompanyID)
+			if err != nil {
+				return database.DeleteUserParams{}, err
+			}
 
-	err = u.DB.DeleteUser(ctx, dbReq)
-	if err != nil {
-		RespondWithError(w, http.StatusInternalServerError, "Failed to create user:", err)
-		return
-	}
+			return database.DeleteUserParams{
+				ID:        userID,
+				CompanyID: companyID,
+			}, nil
+		},
+		func(ctx context.Context, param database.DeleteUserParams) (struct{}, error) {
+			return struct{}{}, u.DB.DeleteUser(ctx, param)
+		},
+		http.StatusOK,
+	)
 
-
-	w.WriteHeader(http.StatusOK)
 }

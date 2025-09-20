@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -38,7 +37,7 @@ func (c *Company) Create (w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
     defer cancel()
 
-    _, _ = createRecord(
+    _, _ = processRequest(
         ctx,
         w,
         r,
@@ -103,9 +102,7 @@ func (c *Company) List (w http.ResponseWriter, r *http.Request) {
 }
 
 func (c *Company) GetById (w http.ResponseWriter, r *http.Request) {
-	companyIDString := chi.URLParam(r,"id")
-	fmt.Println(companyIDString)
-	companyID, err := uuid.Parse(companyIDString)
+	companyID, err := uuid.Parse(chi.URLParam(r,"id"))
 	if err != nil {
 		RespondWithError(w, http.StatusNotFound, "Failed to parse id to UUID:", err)
 		return
@@ -120,14 +117,7 @@ func (c *Company) GetById (w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	res, err := json.Marshal(company)
-	if err != nil {
-		RespondWithError(w, http.StatusInternalServerError, "Failed to marshal response:", err)
-		return
-	}
-
-	w.WriteHeader(http.StatusOK)
-	w.Write(res)
+	RespondWithJSON(w, http.StatusOK, company)
 }
 
 func (c *Company) UpdateById (w http.ResponseWriter, r *http.Request) {
@@ -135,9 +125,7 @@ func (c *Company) UpdateById (w http.ResponseWriter, r *http.Request) {
 }
 
 func (c *Company) DeleteById (w http.ResponseWriter, r *http.Request) {
-	companyIDString := chi.URLParam(r,"id")
-
-	companyID, err := uuid.Parse(companyIDString)
+	companyID, err := uuid.Parse(chi.URLParam(r,"id"))
 	if err != nil {
 		RespondWithError(w, http.StatusNotFound, "Failed to parse id to UUID:", err)
 		return
@@ -152,5 +140,5 @@ func (c *Company) DeleteById (w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.WriteHeader(http.StatusOK)
+	RespondWithJSON(w, http.StatusOK, struct{}{})
 }

@@ -2,7 +2,6 @@ package handler
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"math"
 	"net/http"
@@ -19,136 +18,112 @@ type Product struct {
 	DB *database.Queries
 }
 
+type createProduct struct {
+	CompanyID                       uuid.UUID `json:"CompanyID"`
+	ProdName                        string    `json:"ProdName"`
+	RevAssessment                   string    `json:"RevAssessment"`
+	OverTimePercent                 string    `json:"OverTimePercent"`
+	PointInTimePercent              string    `json:"PointInTimePercent"`
+	StandaloneSellingPriceMethod    string    `json:"StandaloneSellingPriceMethod"`
+	StandaloneSellingPricePriceHigh string    `json:"StandaloneSellingPricePriceHigh"`
+	StandaloneSellingPricePriceLow  string    `json:"StandaloneSellingPricePriceLow"`
+	DefaultCurrency                 string    `json:"DefaultCurrency"`
+}
+
+type companyProductsRequest struct {
+	CompanyID uuid.UUID `json:"CompanyID"`
+}
+
 func (p *Product) Create(w http.ResponseWriter, r *http.Request) {
-	decoder := json.NewDecoder(r.Body)
-	request := struct {
-		CompanyID                       uuid.UUID `json:"CompanyID"`
-		ProdName                        string    `json:"ProdName"`
-		RevAssessment                   string    `json:"RevAssessment"`
-		OverTimePercent                 string    `json:"OverTimePercent"`
-		PointInTimePercent              string    `json:"PointInTimePercent"`
-		StandaloneSellingPriceMethod    string    `json:"StandaloneSellingPriceMethod"`
-		StandaloneSellingPricePriceHigh string    `json:"StandaloneSellingPricePriceHigh"`
-		StandaloneSellingPricePriceLow  string    `json:"StandaloneSellingPricePriceLow"`
-		DefaultCurrency                 string    `json:"DefaultCurrency"`
-	}{}
 
-	err := decoder.Decode(&request)
-	if err != nil {
-		RespondWithError(w, http.StatusBadRequest, "Error decoding request", err)
-		return
-	}
-
-	ctx, cancel := context.WithTimeout(r.Context(), time.Second*10)
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 
-	dbReq := database.CreateProductParams{
-		CompanyID:                       request.CompanyID,
-		ProdName:                        request.ProdName,
-		RevAssessment:                   request.RevAssessment,
-		OverTimePercent:                 request.OverTimePercent,
-		PointInTimePercent:              request.PointInTimePercent,
-		StandaloneSellingPriceMethod:    request.StandaloneSellingPriceMethod,
-		StandaloneSellingPricePriceHigh: request.StandaloneSellingPricePriceHigh,
-		StandaloneSellingPricePriceLow:  request.StandaloneSellingPricePriceLow,
-		DefaultCurrency:                 request.DefaultCurrency,
-	}
-	if err := p.productInputValidation(&dbReq); err != nil {
-		RespondWithError(w, http.StatusBadRequest, "Invalid product payload:", err)
-		return
-	}
+	_, _ = processRequest(
+		ctx,
+		w,
+		r,
+		func() createProduct { return createProduct{} },
+		func(req createProduct) (database.CreateProductParams, error) {
+			dbReq := database.CreateProductParams{
+				CompanyID:                       req.CompanyID,
+				ProdName:                        req.ProdName,
+				RevAssessment:                   req.RevAssessment,
+				OverTimePercent:                 req.OverTimePercent,
+				PointInTimePercent:              req.PointInTimePercent,
+				StandaloneSellingPriceMethod:    req.StandaloneSellingPriceMethod,
+				StandaloneSellingPricePriceHigh: req.StandaloneSellingPricePriceHigh,
+				StandaloneSellingPricePriceLow:  req.StandaloneSellingPricePriceLow,
+				DefaultCurrency:                 req.DefaultCurrency,
+			}
 
-	Products, err := p.DB.CreateProduct(ctx, dbReq)
+			if err := p.productInputValidation(&dbReq); err != nil {
+				return dbReq, err
+			}
+			return dbReq, nil
+		},
+		func(ctx context.Context, params database.CreateProductParams) (database.Product, error) {
+			return p.DB.CreateProduct(ctx, params)
+		},
+		http.StatusCreated,
+	)
 
-	if err != nil {
-		RespondWithError(w, http.StatusInternalServerError, "Failed to create Products:", err)
-		return
-	}
-
-	data, err := json.Marshal(Products)
-	if err != nil {
-		RespondWithError(w, http.StatusInternalServerError, "Error marshaling response:", err)
-		return
-	}
-
-	w.WriteHeader(http.StatusCreated)
-	w.Write(data)
 }
 
 func (p *Product) List(w http.ResponseWriter, r *http.Request) {
-	decoder := json.NewDecoder(r.Body)
-	request := struct {
-		CompanyID uuid.UUID `json:"CompanyID"`
-	}{}
 
-	err := decoder.Decode(&request)
-	if err != nil {
-		RespondWithError(w, http.StatusBadRequest, "Error decoding request", err)
-		return
-	}
-
-	ctx, cancel := context.WithTimeout(r.Context(), time.Second*10)
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 
-	products, err := p.DB.GetAllProductsCompany(ctx, request.CompanyID)
+	_, _ = processRequest(
+		ctx,
+		w,
+		r,
+		func() companyProductsRequest { return companyProductsRequest{} },
+		func(req companyProductsRequest) (uuid.UUID, error) {
+			return companyIDFromRequest(req.CompanyID)
+		},
+		func(ctx context.Context, param uuid.UUID) ([]database.Product, error) {
+			return p.DB.GetAllProductsCompany(ctx, param)
+		},
+		http.StatusOK,
+	)
 
-	if err != nil {
-		RespondWithError(w, http.StatusInternalServerError, "Failed to create products:", err)
-		return
-	}
-
-	data, err := json.Marshal(products)
-	if err != nil {
-		RespondWithError(w, http.StatusInternalServerError, "Error marshaling response:", err)
-		return
-	}
-
-	w.WriteHeader(http.StatusOK)
-	w.Write(data)
 }
 
 func (p *Product) GetById(w http.ResponseWriter, r *http.Request) {
-	productIDString := chi.URLParam(r, "id")
 
-	productID, err := uuid.Parse(productIDString)
+	productID, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
 		RespondWithError(w, http.StatusBadRequest, "Error missing or invalid product ID:", err)
 		return
 	}
 
-	decoder := json.NewDecoder(r.Body)
-	request := struct {
-		CompanyID uuid.UUID `json:"CompanyID"`
-	}{}
-
-	err = decoder.Decode(&request)
-	if err != nil {
-		RespondWithError(w, http.StatusBadRequest, "Error decoding request", err)
-		return
-	}
-
-	ctx, cancel := context.WithTimeout(r.Context(), time.Second*10)
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 
-	dbReq := database.GetProductParams{
-		ID: 		   productID,
-		CompanyID:     request.CompanyID,
-	}
-	Products, err := p.DB.GetProduct(ctx, dbReq)
+	_, _ = processRequest(
+		ctx,
+		w,
+		r,
+		func() companyProductsRequest { return companyProductsRequest{} },
+		func(req companyProductsRequest) (database.GetProductParams, error) {
+			companyID, err := companyIDFromRequest(req.CompanyID)
+			if err != nil {
+				return database.GetProductParams{}, err
+			}
 
-	if err != nil {
-		RespondWithError(w, http.StatusInternalServerError, "Failed to create Products:", err)
-		return
-	}
+			return database.GetProductParams{
+				ID:        productID,
+				CompanyID: companyID,
+			}, nil
+		},
+		func(ctx context.Context, param database.GetProductParams) (database.Product, error) {
+			return p.DB.GetProduct(ctx, param)
+		},
+		http.StatusOK,
+	)
 
-	data, err := json.Marshal(Products)
-	if err != nil {
-		RespondWithError(w, http.StatusInternalServerError, "Error marshaling response:", err)
-		return
-	}
-
-	w.WriteHeader(http.StatusOK)
-	w.Write(data)
 }
 
 func (p *Product) UpdateById(w http.ResponseWriter, r *http.Request) {
@@ -156,39 +131,38 @@ func (p *Product) UpdateById(w http.ResponseWriter, r *http.Request) {
 }
 
 func (p *Product) DeleteById(w http.ResponseWriter, r *http.Request) {
-	productIDString := chi.URLParam(r, "id")
 
-	productID, err := uuid.Parse(productIDString)
+	productID, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
 		RespondWithError(w, http.StatusBadRequest, "Error missing or invalid product ID:", err)
 		return
 	}
 
-	decoder := json.NewDecoder(r.Body)
-	request := struct {
-		CompanyID uuid.UUID `json:"CompanyID"`
-	}{}
-
-	err = decoder.Decode(&request)
-	if err != nil {
-		RespondWithError(w, http.StatusBadRequest, "Error decoding request", err)
-		return
-	}
-
-	ctx, cancel := context.WithTimeout(r.Context(), time.Second*10)
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 
-	dbReq := database.DeleteProductParams{
-		ID: 		   productID,
-		CompanyID:     request.CompanyID,
-	}
-	err = p.DB.DeleteProduct(ctx, dbReq)
-	if err != nil {
-		RespondWithError(w, http.StatusInternalServerError, "Failed to create Products:", err)
-		return
-	}
+	_, _ = processRequest(
+		ctx,
+		w,
+		r,
+		func() companyProductsRequest { return companyProductsRequest{} },
+		func(req companyProductsRequest) (database.DeleteProductParams, error) {
+			companyID, err := companyIDFromRequest(req.CompanyID)
+			if err != nil {
+				return database.DeleteProductParams{}, err
+			}
 
-	w.WriteHeader(http.StatusOK)
+			return database.DeleteProductParams{
+				ID:        productID,
+				CompanyID: companyID,
+			}, nil
+		},
+		func(ctx context.Context, param database.DeleteProductParams) (struct{}, error) {
+			return struct{}{}, p.DB.DeleteProduct(ctx, param)
+		},
+		http.StatusOK,
+	)
+
 }
 
 func (p *Product) productInputValidation(prod *database.CreateProductParams) error {
