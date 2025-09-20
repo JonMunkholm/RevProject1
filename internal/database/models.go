@@ -16,6 +16,8 @@ type Bundle struct {
 	BundleName string
 	IsActive   bool
 	CompanyID  uuid.UUID
+	CreatedAt  time.Time
+	UpdatedAt  time.Time
 }
 
 type BundlePerformanceObligation struct {
@@ -26,6 +28,7 @@ type BundlePerformanceObligation struct {
 type BundleProduct struct {
 	BundleID  uuid.UUID
 	ProductID uuid.UUID
+	CompanyID uuid.UUID
 }
 
 type Company struct {
@@ -83,6 +86,7 @@ type Product struct {
 	IsActive                        bool
 	DefaultCurrency                 string
 	CreatedAt                       time.Time
+	UpdatedAt                       time.Time
 }
 
 type ProductPerformanceObligation struct {

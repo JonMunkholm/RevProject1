@@ -184,6 +184,89 @@ func (q *Queries) GetContract(ctx context.Context, arg GetContractParams) (Contr
 	return i, err
 }
 
+const getContractsByCustomer = `-- name: GetContractsByCustomer :many
+SELECT id, company_id, customer_id, created_at, updated_at, start_date, end_date, is_final, contract_url FROM contracts
+WHERE Company_ID = $1
+AND Customer_ID = $2
+`
+
+type GetContractsByCustomerParams struct {
+	CompanyID  uuid.UUID
+	CustomerID uuid.UUID
+}
+
+func (q *Queries) GetContractsByCustomer(ctx context.Context, arg GetContractsByCustomerParams) ([]Contract, error) {
+	rows, err := q.db.QueryContext(ctx, getContractsByCustomer, arg.CompanyID, arg.CustomerID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Contract
+	for rows.Next() {
+		var i Contract
+		if err := rows.Scan(
+			&i.ID,
+			&i.CompanyID,
+			&i.CustomerID,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.StartDate,
+			&i.EndDate,
+			&i.IsFinal,
+			&i.ContractUrl,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getFinalContractsCompany = `-- name: GetFinalContractsCompany :many
+SELECT id, company_id, customer_id, created_at, updated_at, start_date, end_date, is_final, contract_url FROM contracts
+WHERE Company_ID = $1
+AND Is_Final = TRUE
+`
+
+func (q *Queries) GetFinalContractsCompany(ctx context.Context, companyID uuid.UUID) ([]Contract, error) {
+	rows, err := q.db.QueryContext(ctx, getFinalContractsCompany, companyID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Contract
+	for rows.Next() {
+		var i Contract
+		if err := rows.Scan(
+			&i.ID,
+			&i.CompanyID,
+			&i.CustomerID,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.StartDate,
+			&i.EndDate,
+			&i.IsFinal,
+			&i.ContractUrl,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const resetcontracts = `-- name: Resetcontracts :exec
 Delete FROM contracts
 `
@@ -191,4 +274,52 @@ Delete FROM contracts
 func (q *Queries) Resetcontracts(ctx context.Context) error {
 	_, err := q.db.ExecContext(ctx, resetcontracts)
 	return err
+}
+
+const updateContract = `-- name: UpdateContract :one
+UPDATE contracts
+SET
+    Customer_ID = $1,
+    Start_Date = $2,
+    End_Date = $3,
+    Is_Final = $4,
+    Contract_URL = $5
+WHERE ID = $6
+AND Company_ID = $7
+RETURNING id, company_id, customer_id, created_at, updated_at, start_date, end_date, is_final, contract_url
+`
+
+type UpdateContractParams struct {
+	CustomerID  uuid.UUID
+	StartDate   time.Time
+	EndDate     time.Time
+	IsFinal     bool
+	ContractUrl sql.NullString
+	ID          uuid.UUID
+	CompanyID   uuid.UUID
+}
+
+func (q *Queries) UpdateContract(ctx context.Context, arg UpdateContractParams) (Contract, error) {
+	row := q.db.QueryRowContext(ctx, updateContract,
+		arg.CustomerID,
+		arg.StartDate,
+		arg.EndDate,
+		arg.IsFinal,
+		arg.ContractUrl,
+		arg.ID,
+		arg.CompanyID,
+	)
+	var i Contract
+	err := row.Scan(
+		&i.ID,
+		&i.CompanyID,
+		&i.CustomerID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.StartDate,
+		&i.EndDate,
+		&i.IsFinal,
+		&i.ContractUrl,
+	)
+	return i, err
 }

@@ -7,37 +7,47 @@ package database
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
 )
 
 const addProductToBundle = `-- name: AddProductToBundle :one
-INSERT Into bundle_products (Bundle_ID, Product_ID)
+INSERT INTO bundle_products (Bundle_ID, Product_ID, Company_ID)
 VALUES (
     $1,
-    $2
-) RETURNING bundle_id, product_id
+    $2,
+    $3
+)
+RETURNING bundle_id, product_id, company_id
 `
 
 type AddProductToBundleParams struct {
 	BundleID  uuid.UUID
 	ProductID uuid.UUID
+	CompanyID uuid.UUID
 }
 
 func (q *Queries) AddProductToBundle(ctx context.Context, arg AddProductToBundleParams) (BundleProduct, error) {
-	row := q.db.QueryRowContext(ctx, addProductToBundle, arg.BundleID, arg.ProductID)
+	row := q.db.QueryRowContext(ctx, addProductToBundle, arg.BundleID, arg.ProductID, arg.CompanyID)
 	var i BundleProduct
-	err := row.Scan(&i.BundleID, &i.ProductID)
+	err := row.Scan(&i.BundleID, &i.ProductID, &i.CompanyID)
 	return i, err
 }
 
 const clearBundleProducts = `-- name: ClearBundleProducts :exec
 DELETE FROM bundle_products
 WHERE Bundle_ID = $1
+AND Company_ID = $2
 `
 
-func (q *Queries) ClearBundleProducts(ctx context.Context, bundleID uuid.UUID) error {
-	_, err := q.db.ExecContext(ctx, clearBundleProducts, bundleID)
+type ClearBundleProductsParams struct {
+	BundleID  uuid.UUID
+	CompanyID uuid.UUID
+}
+
+func (q *Queries) ClearBundleProducts(ctx context.Context, arg ClearBundleProductsParams) error {
+	_, err := q.db.ExecContext(ctx, clearBundleProducts, arg.BundleID, arg.CompanyID)
 	return err
 }
 
@@ -46,7 +56,8 @@ INSERT INTO bundles (Bundle_Name, Company_ID)
 VALUES (
     $1,
     $2
-) RETURNING id, bundle_name, is_active, company_id
+)
+RETURNING id, bundle_name, is_active, company_id, created_at, updated_at
 `
 
 type CreateBundleParams struct {
@@ -62,6 +73,8 @@ func (q *Queries) CreateBundle(ctx context.Context, arg CreateBundleParams) (Bun
 		&i.BundleName,
 		&i.IsActive,
 		&i.CompanyID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
 	)
 	return i, err
 }
@@ -86,20 +99,58 @@ const deleteProductFromBundle = `-- name: DeleteProductFromBundle :exec
 DELETE FROM bundle_products
 WHERE Bundle_ID = $1
 AND Product_ID = $2
+AND Company_ID = $3
 `
 
 type DeleteProductFromBundleParams struct {
 	BundleID  uuid.UUID
 	ProductID uuid.UUID
+	CompanyID uuid.UUID
 }
 
 func (q *Queries) DeleteProductFromBundle(ctx context.Context, arg DeleteProductFromBundleParams) error {
-	_, err := q.db.ExecContext(ctx, deleteProductFromBundle, arg.BundleID, arg.ProductID)
+	_, err := q.db.ExecContext(ctx, deleteProductFromBundle, arg.BundleID, arg.ProductID, arg.CompanyID)
 	return err
 }
 
+const getActiveBundlesCompany = `-- name: GetActiveBundlesCompany :many
+SELECT id, bundle_name, is_active, company_id, created_at, updated_at FROM bundles
+WHERE Company_ID = $1
+AND Is_Active = TRUE
+`
+
+func (q *Queries) GetActiveBundlesCompany(ctx context.Context, companyID uuid.UUID) ([]Bundle, error) {
+	rows, err := q.db.QueryContext(ctx, getActiveBundlesCompany, companyID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Bundle
+	for rows.Next() {
+		var i Bundle
+		if err := rows.Scan(
+			&i.ID,
+			&i.BundleName,
+			&i.IsActive,
+			&i.CompanyID,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getAllBundleCompany = `-- name: GetAllBundleCompany :many
-SELECT id, bundle_name, is_active, company_id FROM bundles
+SELECT id, bundle_name, is_active, company_id, created_at, updated_at FROM bundles
 Where Company_ID = $1
 `
 
@@ -117,6 +168,8 @@ func (q *Queries) GetAllBundleCompany(ctx context.Context, companyID uuid.UUID) 
 			&i.BundleName,
 			&i.IsActive,
 			&i.CompanyID,
+			&i.CreatedAt,
+			&i.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -132,7 +185,7 @@ func (q *Queries) GetAllBundleCompany(ctx context.Context, companyID uuid.UUID) 
 }
 
 const getAllBundles = `-- name: GetAllBundles :many
-SELECT id, bundle_name, is_active, company_id FROM bundles
+SELECT id, bundle_name, is_active, company_id, created_at, updated_at FROM bundles
 `
 
 func (q *Queries) GetAllBundles(ctx context.Context) ([]Bundle, error) {
@@ -149,6 +202,8 @@ func (q *Queries) GetAllBundles(ctx context.Context) ([]Bundle, error) {
 			&i.BundleName,
 			&i.IsActive,
 			&i.CompanyID,
+			&i.CreatedAt,
+			&i.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -164,7 +219,7 @@ func (q *Queries) GetAllBundles(ctx context.Context) ([]Bundle, error) {
 }
 
 const getBundle = `-- name: GetBundle :one
-SELECT id, bundle_name, is_active, company_id FROM bundles
+SELECT id, bundle_name, is_active, company_id, created_at, updated_at FROM bundles
 WHERE ID = $1
 AND Company_ID = $2
 `
@@ -182,25 +237,97 @@ func (q *Queries) GetBundle(ctx context.Context, arg GetBundleParams) (Bundle, e
 		&i.BundleName,
 		&i.IsActive,
 		&i.CompanyID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
 	)
 	return i, err
 }
 
-const getBundleProducts = `-- name: GetBundleProducts :many
-SELECT bundle_id, product_id FROM bundle_products
-WHERE Bundle_ID = $1
+const getBundleByName = `-- name: GetBundleByName :one
+SELECT id, bundle_name, is_active, company_id, created_at, updated_at FROM bundles
+WHERE Company_ID = $1
+AND Bundle_Name = $2
 `
 
-func (q *Queries) GetBundleProducts(ctx context.Context, bundleID uuid.UUID) ([]BundleProduct, error) {
-	rows, err := q.db.QueryContext(ctx, getBundleProducts, bundleID)
+type GetBundleByNameParams struct {
+	CompanyID  uuid.UUID
+	BundleName string
+}
+
+func (q *Queries) GetBundleByName(ctx context.Context, arg GetBundleByNameParams) (Bundle, error) {
+	row := q.db.QueryRowContext(ctx, getBundleByName, arg.CompanyID, arg.BundleName)
+	var i Bundle
+	err := row.Scan(
+		&i.ID,
+		&i.BundleName,
+		&i.IsActive,
+		&i.CompanyID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getBundleProductDetails = `-- name: GetBundleProductDetails :many
+SELECT
+    bp.Bundle_ID,
+    bp.Company_ID,
+    p.id, p.prod_name, p.rev_assessment, p.over_time_percent, p.point_in_time_percent, p.standalone_selling_price_method, p.standalone_selling_price_price_high, p.standalone_selling_price_price_low, p.company_id, p.is_active, p.default_currency, p.created_at, p.updated_at
+FROM bundle_products bp
+INNER JOIN products p ON p.ID = bp.Product_ID
+WHERE bp.Bundle_ID = $1
+AND bp.Company_ID = $2
+`
+
+type GetBundleProductDetailsParams struct {
+	BundleID  uuid.UUID
+	CompanyID uuid.UUID
+}
+
+type GetBundleProductDetailsRow struct {
+	BundleID                        uuid.UUID
+	CompanyID                       uuid.UUID
+	ID                              uuid.UUID
+	ProdName                        string
+	RevAssessment                   string
+	OverTimePercent                 string
+	PointInTimePercent              string
+	StandaloneSellingPriceMethod    string
+	StandaloneSellingPricePriceHigh string
+	StandaloneSellingPricePriceLow  string
+	CompanyID_2                     uuid.UUID
+	IsActive                        bool
+	DefaultCurrency                 string
+	CreatedAt                       time.Time
+	UpdatedAt                       time.Time
+}
+
+func (q *Queries) GetBundleProductDetails(ctx context.Context, arg GetBundleProductDetailsParams) ([]GetBundleProductDetailsRow, error) {
+	rows, err := q.db.QueryContext(ctx, getBundleProductDetails, arg.BundleID, arg.CompanyID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []BundleProduct
+	var items []GetBundleProductDetailsRow
 	for rows.Next() {
-		var i BundleProduct
-		if err := rows.Scan(&i.BundleID, &i.ProductID); err != nil {
+		var i GetBundleProductDetailsRow
+		if err := rows.Scan(
+			&i.BundleID,
+			&i.CompanyID,
+			&i.ID,
+			&i.ProdName,
+			&i.RevAssessment,
+			&i.OverTimePercent,
+			&i.PointInTimePercent,
+			&i.StandaloneSellingPriceMethod,
+			&i.StandaloneSellingPricePriceHigh,
+			&i.StandaloneSellingPricePriceLow,
+			&i.CompanyID_2,
+			&i.IsActive,
+			&i.DefaultCurrency,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -214,6 +341,92 @@ func (q *Queries) GetBundleProducts(ctx context.Context, bundleID uuid.UUID) ([]
 	return items, nil
 }
 
+const getBundleProducts = `-- name: GetBundleProducts :many
+SELECT bundle_id, product_id, company_id FROM bundle_products
+WHERE Bundle_ID = $1
+AND Company_ID = $2
+`
+
+type GetBundleProductsParams struct {
+	BundleID  uuid.UUID
+	CompanyID uuid.UUID
+}
+
+func (q *Queries) GetBundleProducts(ctx context.Context, arg GetBundleProductsParams) ([]BundleProduct, error) {
+	rows, err := q.db.QueryContext(ctx, getBundleProducts, arg.BundleID, arg.CompanyID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []BundleProduct
+	for rows.Next() {
+		var i BundleProduct
+		if err := rows.Scan(&i.BundleID, &i.ProductID, &i.CompanyID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getBundlesForProduct = `-- name: GetBundlesForProduct :many
+SELECT b.id, b.bundle_name, b.is_active, b.company_id, b.created_at, b.updated_at
+FROM bundles b
+INNER JOIN bundle_products bp ON bp.Bundle_ID = b.ID
+WHERE bp.Product_ID = $1
+AND bp.Company_ID = $2
+`
+
+type GetBundlesForProductParams struct {
+	ProductID uuid.UUID
+	CompanyID uuid.UUID
+}
+
+func (q *Queries) GetBundlesForProduct(ctx context.Context, arg GetBundlesForProductParams) ([]Bundle, error) {
+	rows, err := q.db.QueryContext(ctx, getBundlesForProduct, arg.ProductID, arg.CompanyID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Bundle
+	for rows.Next() {
+		var i Bundle
+		if err := rows.Scan(
+			&i.ID,
+			&i.BundleName,
+			&i.IsActive,
+			&i.CompanyID,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const resetBundleProducts = `-- name: ResetBundleProducts :exec
+DELETE FROM bundle_products
+`
+
+func (q *Queries) ResetBundleProducts(ctx context.Context) error {
+	_, err := q.db.ExecContext(ctx, resetBundleProducts)
+	return err
+}
+
 const resetBundles = `-- name: ResetBundles :exec
 DELETE FROM bundles
 `
@@ -221,4 +434,58 @@ DELETE FROM bundles
 func (q *Queries) ResetBundles(ctx context.Context) error {
 	_, err := q.db.ExecContext(ctx, resetBundles)
 	return err
+}
+
+const setBundleActiveStatus = `-- name: SetBundleActiveStatus :exec
+UPDATE bundles
+SET Is_Active = $1
+WHERE ID = $2
+AND Company_ID = $3
+`
+
+type SetBundleActiveStatusParams struct {
+	IsActive  bool
+	ID        uuid.UUID
+	CompanyID uuid.UUID
+}
+
+func (q *Queries) SetBundleActiveStatus(ctx context.Context, arg SetBundleActiveStatusParams) error {
+	_, err := q.db.ExecContext(ctx, setBundleActiveStatus, arg.IsActive, arg.ID, arg.CompanyID)
+	return err
+}
+
+const updateBundle = `-- name: UpdateBundle :one
+UPDATE bundles
+SET
+    Bundle_Name = $1,
+    Is_Active = $2
+WHERE ID = $3
+AND Company_ID = $4
+RETURNING id, bundle_name, is_active, company_id, created_at, updated_at
+`
+
+type UpdateBundleParams struct {
+	BundleName string
+	IsActive   bool
+	ID         uuid.UUID
+	CompanyID  uuid.UUID
+}
+
+func (q *Queries) UpdateBundle(ctx context.Context, arg UpdateBundleParams) (Bundle, error) {
+	row := q.db.QueryRowContext(ctx, updateBundle,
+		arg.BundleName,
+		arg.IsActive,
+		arg.ID,
+		arg.CompanyID,
+	)
+	var i Bundle
+	err := row.Scan(
+		&i.ID,
+		&i.BundleName,
+		&i.IsActive,
+		&i.CompanyID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
 }

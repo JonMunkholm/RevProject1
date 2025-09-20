@@ -55,6 +55,42 @@ func (q *Queries) DeleteUser(ctx context.Context, arg DeleteUserParams) error {
 	return err
 }
 
+const getActiveUsersCompany = `-- name: GetActiveUsersCompany :many
+SELECT id, user_name, created_at, updated_at, company_id, is_active FROM users
+WHERE Company_ID = $1
+AND Is_Active = TRUE
+`
+
+func (q *Queries) GetActiveUsersCompany(ctx context.Context, companyID uuid.UUID) ([]User, error) {
+	rows, err := q.db.QueryContext(ctx, getActiveUsersCompany, companyID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []User
+	for rows.Next() {
+		var i User
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserName,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.CompanyID,
+			&i.IsActive,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getAllUsers = `-- name: GetAllUsers :many
 SELECT id, user_name, created_at, updated_at, company_id, is_active FROM users
 `
@@ -149,6 +185,31 @@ func (q *Queries) GetUser(ctx context.Context, arg GetUserParams) (User, error) 
 	return i, err
 }
 
+const getUserByName = `-- name: GetUserByName :one
+SELECT id, user_name, created_at, updated_at, company_id, is_active FROM users
+WHERE Company_ID = $1
+AND User_Name = $2
+`
+
+type GetUserByNameParams struct {
+	CompanyID uuid.UUID
+	UserName  string
+}
+
+func (q *Queries) GetUserByName(ctx context.Context, arg GetUserByNameParams) (User, error) {
+	row := q.db.QueryRowContext(ctx, getUserByName, arg.CompanyID, arg.UserName)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.UserName,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.CompanyID,
+		&i.IsActive,
+	)
+	return i, err
+}
+
 const resetusers = `-- name: Resetusers :exec
 Delete FROM users
 `
@@ -156,4 +217,58 @@ Delete FROM users
 func (q *Queries) Resetusers(ctx context.Context) error {
 	_, err := q.db.ExecContext(ctx, resetusers)
 	return err
+}
+
+const setUserActiveStatus = `-- name: SetUserActiveStatus :exec
+UPDATE users
+SET Is_Active = $1
+WHERE ID = $2
+AND Company_ID = $3
+`
+
+type SetUserActiveStatusParams struct {
+	IsActive  bool
+	ID        uuid.UUID
+	CompanyID uuid.UUID
+}
+
+func (q *Queries) SetUserActiveStatus(ctx context.Context, arg SetUserActiveStatusParams) error {
+	_, err := q.db.ExecContext(ctx, setUserActiveStatus, arg.IsActive, arg.ID, arg.CompanyID)
+	return err
+}
+
+const updateUser = `-- name: UpdateUser :one
+UPDATE users
+SET
+    User_Name = $1,
+    Is_Active = $2
+WHERE ID = $3
+AND Company_ID = $4
+RETURNING id, user_name, created_at, updated_at, company_id, is_active
+`
+
+type UpdateUserParams struct {
+	UserName  string
+	IsActive  bool
+	ID        uuid.UUID
+	CompanyID uuid.UUID
+}
+
+func (q *Queries) UpdateUser(ctx context.Context, arg UpdateUserParams) (User, error) {
+	row := q.db.QueryRowContext(ctx, updateUser,
+		arg.UserName,
+		arg.IsActive,
+		arg.ID,
+		arg.CompanyID,
+	)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.UserName,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.CompanyID,
+		&i.IsActive,
+	)
+	return i, err
 }

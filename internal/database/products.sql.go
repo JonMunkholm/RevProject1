@@ -33,7 +33,7 @@ INSERT INTO products (
     $8,
     $9
 )
-RETURNING id, prod_name, rev_assessment, over_time_percent, point_in_time_percent, standalone_selling_price_method, standalone_selling_price_price_high, standalone_selling_price_price_low, company_id, is_active, default_currency, created_at
+RETURNING id, prod_name, rev_assessment, over_time_percent, point_in_time_percent, standalone_selling_price_method, standalone_selling_price_price_high, standalone_selling_price_price_low, company_id, is_active, default_currency, created_at, updated_at
 `
 
 type CreateProductParams struct {
@@ -74,12 +74,13 @@ func (q *Queries) CreateProduct(ctx context.Context, arg CreateProductParams) (P
 		&i.IsActive,
 		&i.DefaultCurrency,
 		&i.CreatedAt,
+		&i.UpdatedAt,
 	)
 	return i, err
 }
 
 const deleteAllProductsCompany = `-- name: DeleteAllProductsCompany :exec
-SELECT id, prod_name, rev_assessment, over_time_percent, point_in_time_percent, standalone_selling_price_method, standalone_selling_price_price_high, standalone_selling_price_price_low, company_id, is_active, default_currency, created_at FROM products
+DELETE FROM products
 WHERE Company_ID = $1
 `
 
@@ -104,8 +105,51 @@ func (q *Queries) DeleteProduct(ctx context.Context, arg DeleteProductParams) er
 	return err
 }
 
+const getActiveProductsCompany = `-- name: GetActiveProductsCompany :many
+SELECT id, prod_name, rev_assessment, over_time_percent, point_in_time_percent, standalone_selling_price_method, standalone_selling_price_price_high, standalone_selling_price_price_low, company_id, is_active, default_currency, created_at, updated_at FROM products
+WHERE Company_ID = $1
+AND Is_Active = TRUE
+`
+
+func (q *Queries) GetActiveProductsCompany(ctx context.Context, companyID uuid.UUID) ([]Product, error) {
+	rows, err := q.db.QueryContext(ctx, getActiveProductsCompany, companyID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Product
+	for rows.Next() {
+		var i Product
+		if err := rows.Scan(
+			&i.ID,
+			&i.ProdName,
+			&i.RevAssessment,
+			&i.OverTimePercent,
+			&i.PointInTimePercent,
+			&i.StandaloneSellingPriceMethod,
+			&i.StandaloneSellingPricePriceHigh,
+			&i.StandaloneSellingPricePriceLow,
+			&i.CompanyID,
+			&i.IsActive,
+			&i.DefaultCurrency,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getAllProducts = `-- name: GetAllProducts :many
-SELECT id, prod_name, rev_assessment, over_time_percent, point_in_time_percent, standalone_selling_price_method, standalone_selling_price_price_high, standalone_selling_price_price_low, company_id, is_active, default_currency, created_at FROM products
+SELECT id, prod_name, rev_assessment, over_time_percent, point_in_time_percent, standalone_selling_price_method, standalone_selling_price_price_high, standalone_selling_price_price_low, company_id, is_active, default_currency, created_at, updated_at FROM products
 `
 
 func (q *Queries) GetAllProducts(ctx context.Context) ([]Product, error) {
@@ -130,6 +174,7 @@ func (q *Queries) GetAllProducts(ctx context.Context) ([]Product, error) {
 			&i.IsActive,
 			&i.DefaultCurrency,
 			&i.CreatedAt,
+			&i.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -145,7 +190,7 @@ func (q *Queries) GetAllProducts(ctx context.Context) ([]Product, error) {
 }
 
 const getAllProductsCompany = `-- name: GetAllProductsCompany :many
-SELECT id, prod_name, rev_assessment, over_time_percent, point_in_time_percent, standalone_selling_price_method, standalone_selling_price_price_high, standalone_selling_price_price_low, company_id, is_active, default_currency, created_at FROM products
+SELECT id, prod_name, rev_assessment, over_time_percent, point_in_time_percent, standalone_selling_price_method, standalone_selling_price_price_high, standalone_selling_price_price_low, company_id, is_active, default_currency, created_at, updated_at FROM products
 WHERE Company_ID = $1
 `
 
@@ -171,6 +216,7 @@ func (q *Queries) GetAllProductsCompany(ctx context.Context, companyID uuid.UUID
 			&i.IsActive,
 			&i.DefaultCurrency,
 			&i.CreatedAt,
+			&i.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -186,7 +232,7 @@ func (q *Queries) GetAllProductsCompany(ctx context.Context, companyID uuid.UUID
 }
 
 const getProduct = `-- name: GetProduct :one
-SELECT id, prod_name, rev_assessment, over_time_percent, point_in_time_percent, standalone_selling_price_method, standalone_selling_price_price_high, standalone_selling_price_price_low, company_id, is_active, default_currency, created_at FROM products
+SELECT id, prod_name, rev_assessment, over_time_percent, point_in_time_percent, standalone_selling_price_method, standalone_selling_price_price_high, standalone_selling_price_price_low, company_id, is_active, default_currency, created_at, updated_at FROM products
 WHERE ID = $1
 AND Company_ID = $2
 `
@@ -212,6 +258,39 @@ func (q *Queries) GetProduct(ctx context.Context, arg GetProductParams) (Product
 		&i.IsActive,
 		&i.DefaultCurrency,
 		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getProductByName = `-- name: GetProductByName :one
+SELECT id, prod_name, rev_assessment, over_time_percent, point_in_time_percent, standalone_selling_price_method, standalone_selling_price_price_high, standalone_selling_price_price_low, company_id, is_active, default_currency, created_at, updated_at FROM products
+WHERE Company_ID = $1
+AND Prod_Name = $2
+`
+
+type GetProductByNameParams struct {
+	CompanyID uuid.UUID
+	ProdName  string
+}
+
+func (q *Queries) GetProductByName(ctx context.Context, arg GetProductByNameParams) (Product, error) {
+	row := q.db.QueryRowContext(ctx, getProductByName, arg.CompanyID, arg.ProdName)
+	var i Product
+	err := row.Scan(
+		&i.ID,
+		&i.ProdName,
+		&i.RevAssessment,
+		&i.OverTimePercent,
+		&i.PointInTimePercent,
+		&i.StandaloneSellingPriceMethod,
+		&i.StandaloneSellingPricePriceHigh,
+		&i.StandaloneSellingPricePriceLow,
+		&i.CompanyID,
+		&i.IsActive,
+		&i.DefaultCurrency,
+		&i.CreatedAt,
+		&i.UpdatedAt,
 	)
 	return i, err
 }
@@ -223,4 +302,86 @@ Delete FROM products
 func (q *Queries) ResetProducts(ctx context.Context) error {
 	_, err := q.db.ExecContext(ctx, resetProducts)
 	return err
+}
+
+const setProductActiveStatus = `-- name: SetProductActiveStatus :exec
+UPDATE products
+SET Is_Active = $1
+WHERE ID = $2
+AND Company_ID = $3
+`
+
+type SetProductActiveStatusParams struct {
+	IsActive  bool
+	ID        uuid.UUID
+	CompanyID uuid.UUID
+}
+
+func (q *Queries) SetProductActiveStatus(ctx context.Context, arg SetProductActiveStatusParams) error {
+	_, err := q.db.ExecContext(ctx, setProductActiveStatus, arg.IsActive, arg.ID, arg.CompanyID)
+	return err
+}
+
+const updateProduct = `-- name: UpdateProduct :one
+UPDATE products
+SET
+    Prod_Name = $1,
+    Rev_Assessment = $2,
+    Over_Time_Percent = $3,
+    Point_In_Time_Percent = $4,
+    Standalone_Selling_Price_Method = $5,
+    Standalone_Selling_Price_Price_High = $6,
+    Standalone_Selling_Price_Price_Low = $7,
+    Default_Currency = $8,
+    Is_Active = $9
+WHERE ID = $10
+AND Company_ID = $11
+RETURNING id, prod_name, rev_assessment, over_time_percent, point_in_time_percent, standalone_selling_price_method, standalone_selling_price_price_high, standalone_selling_price_price_low, company_id, is_active, default_currency, created_at, updated_at
+`
+
+type UpdateProductParams struct {
+	ProdName                        string
+	RevAssessment                   string
+	OverTimePercent                 string
+	PointInTimePercent              string
+	StandaloneSellingPriceMethod    string
+	StandaloneSellingPricePriceHigh string
+	StandaloneSellingPricePriceLow  string
+	DefaultCurrency                 string
+	IsActive                        bool
+	ID                              uuid.UUID
+	CompanyID                       uuid.UUID
+}
+
+func (q *Queries) UpdateProduct(ctx context.Context, arg UpdateProductParams) (Product, error) {
+	row := q.db.QueryRowContext(ctx, updateProduct,
+		arg.ProdName,
+		arg.RevAssessment,
+		arg.OverTimePercent,
+		arg.PointInTimePercent,
+		arg.StandaloneSellingPriceMethod,
+		arg.StandaloneSellingPricePriceHigh,
+		arg.StandaloneSellingPricePriceLow,
+		arg.DefaultCurrency,
+		arg.IsActive,
+		arg.ID,
+		arg.CompanyID,
+	)
+	var i Product
+	err := row.Scan(
+		&i.ID,
+		&i.ProdName,
+		&i.RevAssessment,
+		&i.OverTimePercent,
+		&i.PointInTimePercent,
+		&i.StandaloneSellingPriceMethod,
+		&i.StandaloneSellingPricePriceHigh,
+		&i.StandaloneSellingPricePriceLow,
+		&i.CompanyID,
+		&i.IsActive,
+		&i.DefaultCurrency,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
 }

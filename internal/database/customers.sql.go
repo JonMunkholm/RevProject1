@@ -55,6 +55,42 @@ func (q *Queries) DeleteCustomer(ctx context.Context, arg DeleteCustomerParams) 
 	return err
 }
 
+const getActiveCustomersCompany = `-- name: GetActiveCustomersCompany :many
+SELECT id, customer_name, created_at, updated_at, is_active, company_id FROM customers
+WHERE Company_ID = $1
+AND Is_Active = TRUE
+`
+
+func (q *Queries) GetActiveCustomersCompany(ctx context.Context, companyID uuid.UUID) ([]Customer, error) {
+	rows, err := q.db.QueryContext(ctx, getActiveCustomersCompany, companyID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Customer
+	for rows.Next() {
+		var i Customer
+		if err := rows.Scan(
+			&i.ID,
+			&i.CustomerName,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.IsActive,
+			&i.CompanyID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getAllCustomers = `-- name: GetAllCustomers :many
 SELECT id, customer_name, created_at, updated_at, is_active, company_id FROM customers
 `
@@ -149,6 +185,31 @@ func (q *Queries) GetCustomer(ctx context.Context, arg GetCustomerParams) (Custo
 	return i, err
 }
 
+const getCustomerByName = `-- name: GetCustomerByName :one
+SELECT id, customer_name, created_at, updated_at, is_active, company_id FROM customers
+WHERE Company_ID = $1
+AND Customer_Name = $2
+`
+
+type GetCustomerByNameParams struct {
+	CompanyID    uuid.UUID
+	CustomerName string
+}
+
+func (q *Queries) GetCustomerByName(ctx context.Context, arg GetCustomerByNameParams) (Customer, error) {
+	row := q.db.QueryRowContext(ctx, getCustomerByName, arg.CompanyID, arg.CustomerName)
+	var i Customer
+	err := row.Scan(
+		&i.ID,
+		&i.CustomerName,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.IsActive,
+		&i.CompanyID,
+	)
+	return i, err
+}
+
 const resetCustomers = `-- name: ResetCustomers :exec
 Delete FROM customers
 `
@@ -156,4 +217,58 @@ Delete FROM customers
 func (q *Queries) ResetCustomers(ctx context.Context) error {
 	_, err := q.db.ExecContext(ctx, resetCustomers)
 	return err
+}
+
+const setCustomerActiveStatus = `-- name: SetCustomerActiveStatus :exec
+UPDATE customers
+SET Is_Active = $1
+WHERE ID = $2
+AND Company_ID = $3
+`
+
+type SetCustomerActiveStatusParams struct {
+	IsActive  bool
+	ID        uuid.UUID
+	CompanyID uuid.UUID
+}
+
+func (q *Queries) SetCustomerActiveStatus(ctx context.Context, arg SetCustomerActiveStatusParams) error {
+	_, err := q.db.ExecContext(ctx, setCustomerActiveStatus, arg.IsActive, arg.ID, arg.CompanyID)
+	return err
+}
+
+const updateCustomer = `-- name: UpdateCustomer :one
+UPDATE customers
+SET
+    Customer_Name = $1,
+    Is_Active = $2
+WHERE ID = $3
+AND Company_ID = $4
+RETURNING id, customer_name, created_at, updated_at, is_active, company_id
+`
+
+type UpdateCustomerParams struct {
+	CustomerName string
+	IsActive     bool
+	ID           uuid.UUID
+	CompanyID    uuid.UUID
+}
+
+func (q *Queries) UpdateCustomer(ctx context.Context, arg UpdateCustomerParams) (Customer, error) {
+	row := q.db.QueryRowContext(ctx, updateCustomer,
+		arg.CustomerName,
+		arg.IsActive,
+		arg.ID,
+		arg.CompanyID,
+	)
+	var i Customer
+	err := row.Scan(
+		&i.ID,
+		&i.CustomerName,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.IsActive,
+		&i.CompanyID,
+	)
+	return i, err
 }

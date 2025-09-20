@@ -40,6 +40,40 @@ func (q *Queries) DeleteCompany(ctx context.Context, id uuid.UUID) error {
 	return err
 }
 
+const getActiveCompanies = `-- name: GetActiveCompanies :many
+SELECT id, company_name, created_at, updated_at, is_active FROM companies
+WHERE Is_Active = TRUE
+`
+
+func (q *Queries) GetActiveCompanies(ctx context.Context) ([]Company, error) {
+	rows, err := q.db.QueryContext(ctx, getActiveCompanies)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Company
+	for rows.Next() {
+		var i Company
+		if err := rows.Scan(
+			&i.ID,
+			&i.CompanyName,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.IsActive,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getAllCompanies = `-- name: GetAllCompanies :many
 SELECT id, company_name, created_at, updated_at, is_active FROM companies
 `
@@ -91,6 +125,24 @@ func (q *Queries) GetCompany(ctx context.Context, id uuid.UUID) (Company, error)
 	return i, err
 }
 
+const getCompanyByName = `-- name: GetCompanyByName :one
+SELECT id, company_name, created_at, updated_at, is_active FROM companies
+WHERE Company_Name = $1
+`
+
+func (q *Queries) GetCompanyByName(ctx context.Context, companyName string) (Company, error) {
+	row := q.db.QueryRowContext(ctx, getCompanyByName, companyName)
+	var i Company
+	err := row.Scan(
+		&i.ID,
+		&i.CompanyName,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.IsActive,
+	)
+	return i, err
+}
+
 const resetCompanies = `-- name: ResetCompanies :exec
 DELETE FROM companies
 `
@@ -98,4 +150,48 @@ DELETE FROM companies
 func (q *Queries) ResetCompanies(ctx context.Context) error {
 	_, err := q.db.ExecContext(ctx, resetCompanies)
 	return err
+}
+
+const setCompanyActiveStatus = `-- name: SetCompanyActiveStatus :exec
+UPDATE companies
+SET Is_Active = $1
+WHERE ID = $2
+`
+
+type SetCompanyActiveStatusParams struct {
+	IsActive bool
+	ID       uuid.UUID
+}
+
+func (q *Queries) SetCompanyActiveStatus(ctx context.Context, arg SetCompanyActiveStatusParams) error {
+	_, err := q.db.ExecContext(ctx, setCompanyActiveStatus, arg.IsActive, arg.ID)
+	return err
+}
+
+const updateCompany = `-- name: UpdateCompany :one
+UPDATE companies
+SET
+    Company_Name = $1,
+    Is_Active = $2
+WHERE ID = $3
+RETURNING id, company_name, created_at, updated_at, is_active
+`
+
+type UpdateCompanyParams struct {
+	CompanyName string
+	IsActive    bool
+	ID          uuid.UUID
+}
+
+func (q *Queries) UpdateCompany(ctx context.Context, arg UpdateCompanyParams) (Company, error) {
+	row := q.db.QueryRowContext(ctx, updateCompany, arg.CompanyName, arg.IsActive, arg.ID)
+	var i Company
+	err := row.Scan(
+		&i.ID,
+		&i.CompanyName,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.IsActive,
+	)
+	return i, err
 }
