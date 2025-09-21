@@ -81,13 +81,12 @@ func (q *Queries) DeleteContract(ctx context.Context, arg DeleteContractParams) 
 	return err
 }
 
-const getAllContractsCompany = `-- name: GetAllContractsCompany :many
+const getAllContracts = `-- name: GetAllContracts :many
 SELECT id, company_id, customer_id, created_at, updated_at, start_date, end_date, is_final, contract_url FROM contracts
-WHERE Company_ID = $1
 `
 
-func (q *Queries) GetAllContractsCompany(ctx context.Context, companyID uuid.UUID) ([]Contract, error) {
-	rows, err := q.db.QueryContext(ctx, getAllContractsCompany, companyID)
+func (q *Queries) GetAllContracts(ctx context.Context) ([]Contract, error) {
+	rows, err := q.db.QueryContext(ctx, getAllContracts)
 	if err != nil {
 		return nil, err
 	}
@@ -119,12 +118,13 @@ func (q *Queries) GetAllContractsCompany(ctx context.Context, companyID uuid.UUI
 	return items, nil
 }
 
-const getAllcontracts = `-- name: GetAllcontracts :many
+const getAllContractsCompany = `-- name: GetAllContractsCompany :many
 SELECT id, company_id, customer_id, created_at, updated_at, start_date, end_date, is_final, contract_url FROM contracts
+WHERE Company_ID = $1
 `
 
-func (q *Queries) GetAllcontracts(ctx context.Context) ([]Contract, error) {
-	rows, err := q.db.QueryContext(ctx, getAllcontracts)
+func (q *Queries) GetAllContractsCompany(ctx context.Context, companyID uuid.UUID) ([]Contract, error) {
+	rows, err := q.db.QueryContext(ctx, getAllContractsCompany, companyID)
 	if err != nil {
 		return nil, err
 	}
@@ -267,12 +267,12 @@ func (q *Queries) GetFinalContractsCompany(ctx context.Context, companyID uuid.U
 	return items, nil
 }
 
-const resetcontracts = `-- name: Resetcontracts :exec
+const resetContracts = `-- name: ResetContracts :exec
 Delete FROM contracts
 `
 
-func (q *Queries) Resetcontracts(ctx context.Context) error {
-	_, err := q.db.ExecContext(ctx, resetcontracts)
+func (q *Queries) ResetContracts(ctx context.Context) error {
+	_, err := q.db.ExecContext(ctx, resetContracts)
 	return err
 }
 

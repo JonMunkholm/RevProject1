@@ -149,13 +149,12 @@ func (q *Queries) GetActiveBundlesCompany(ctx context.Context, companyID uuid.UU
 	return items, nil
 }
 
-const getAllBundleCompany = `-- name: GetAllBundleCompany :many
+const getAllBundles = `-- name: GetAllBundles :many
 SELECT id, bundle_name, is_active, company_id, created_at, updated_at FROM bundles
-Where Company_ID = $1
 `
 
-func (q *Queries) GetAllBundleCompany(ctx context.Context, companyID uuid.UUID) ([]Bundle, error) {
-	rows, err := q.db.QueryContext(ctx, getAllBundleCompany, companyID)
+func (q *Queries) GetAllBundles(ctx context.Context) ([]Bundle, error) {
+	rows, err := q.db.QueryContext(ctx, getAllBundles)
 	if err != nil {
 		return nil, err
 	}
@@ -184,12 +183,13 @@ func (q *Queries) GetAllBundleCompany(ctx context.Context, companyID uuid.UUID) 
 	return items, nil
 }
 
-const getAllBundles = `-- name: GetAllBundles :many
+const getAllBundlesCompany = `-- name: GetAllBundlesCompany :many
 SELECT id, bundle_name, is_active, company_id, created_at, updated_at FROM bundles
+Where Company_ID = $1
 `
 
-func (q *Queries) GetAllBundles(ctx context.Context) ([]Bundle, error) {
-	rows, err := q.db.QueryContext(ctx, getAllBundles)
+func (q *Queries) GetAllBundlesCompany(ctx context.Context, companyID uuid.UUID) ([]Bundle, error) {
+	rows, err := q.db.QueryContext(ctx, getAllBundlesCompany, companyID)
 	if err != nil {
 		return nil, err
 	}
