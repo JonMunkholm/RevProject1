@@ -8,7 +8,7 @@ import (
 	"github.com/go-chi/chi/middleware"
 )
 
-func (a *App) loadRoutes () {
+func (a *App) loadRoutes() {
 	r := chi.NewRouter()
 
 	r.Use(middleware.Logger)
@@ -18,59 +18,87 @@ func (a *App) loadRoutes () {
 		w.Write([]byte("Root is being served"))
 	})
 
-	r.Route("/users", a.loadUserRoutes)
 	r.Route("/companies", a.loadCompanyRoutes)
-	r.Route("/customers", a.loadCustomerRoutes)
 	r.Route("/products", a.loadProductRoutes)
 	r.Route("/contracts", a.loadContractRoutes)
 
 	r.Route("/admin", a.loadAdminRoutes)
 
-
-
 	a.router = r
 }
 
-func (a *App) loadUserRoutes (r chi.Router) {
+func (a *App) loadCompanyRoutes(r chi.Router) {
 	//allows for additional routs to be added easier
-	userHandler := &handler.User{
-		DB: a.db,
-	}
-
-	r.Post("/", userHandler.Create)
-	r.Get("/", userHandler.List)
-	r.Get("/{id}", userHandler.GetById)
-	r.Put("/{id}", userHandler.UpdateById)
-	r.Delete("/{id}", userHandler.DeleteById)
-}
-
-func (a *App) loadCompanyRoutes (r chi.Router) {
-	//allows for additional routs to be added easier
+	//most all these endpoints will be moved to owner route
 	companyHandler := &handler.Company{
 		DB: a.db,
 	}
 
 	r.Post("/", companyHandler.Create)
 	r.Get("/", companyHandler.List)
-	r.Get("/{id}", companyHandler.GetById)
-	r.Put("/{id}", companyHandler.UpdateById)
-	r.Delete("/{id}", companyHandler.DeleteById)
+
+	r.Get("/active", companyHandler.GetActive)
+	r.Get("/by-name/{name}", companyHandler.GetByName)
+
+	r.Put("/{companyID}/active", companyHandler.SetActive)
+	r.Get("/{companyID}", companyHandler.GetById)
+	r.Put("/{companyID}", companyHandler.UpdateById)
+	r.Delete("/{companyID}", companyHandler.DeleteById)
+
+	r.Delete("/", companyHandler.ResetDB)
+
+	r.Route("/{companyID}/users", a.loadUserRoutes)
+	r.Route("/{companyID}/customers", a.loadCustomerRoutes)
+
 }
 
-func (a *App) loadCustomerRoutes (r chi.Router) {
+func (a *App) loadUserRoutes(r chi.Router) {
+	//allows for additional routs to be added easier
+	userHandler := &handler.User{
+		DB: a.db,
+	}
+
+	r.Post("/", userHandler.Create)
+	r.Get("/", userHandler.ListAll) //move to owner route and rename function for handler below and function in user.go to List
+	r.Get("/company", userHandler.List)
+
+	r.Get("/by-name/{name}", userHandler.GetByName)
+
+	r.Get("/{userID}", userHandler.GetById)
+	r.Get("/{userID}/active", userHandler.GetActive)
+	r.Put("/{userID}/active", userHandler.SetActive)
+
+	r.Put("/{userID}", userHandler.UpdateById)
+	r.Delete("/{userID}", userHandler.DeleteById)
+
+	r.Delete("/", userHandler.ResetTable) //move to owner route
+
+}
+
+func (a *App) loadCustomerRoutes(r chi.Router) {
 	//allows for additional routs to be added easier
 	customerHandler := &handler.Customer{
 		DB: a.db,
 	}
 
 	r.Post("/", customerHandler.Create)
-	r.Get("/", customerHandler.List)
-	r.Get("/{id}", customerHandler.GetById)
-	r.Put("/{id}", customerHandler.UpdateById)
-	r.Delete("/{id}", customerHandler.DeleteById)
+	r.Get("/", customerHandler.ListAll) //move to owner route and rename function for handler below and function in user.go to List
+	r.Get("/company", customerHandler.List)
+
+	r.Get("/by-name/{name}", customerHandler.GetByName)
+
+	r.Get("/{customerID}", customerHandler.GetById)
+	r.Get("/{customerID}/active", customerHandler.GetActive)
+	r.Put("/{customerID}/active", customerHandler.SetActive)
+
+	r.Put("/{customerID}", customerHandler.UpdateById)
+	r.Delete("/{customerID}", customerHandler.DeleteById)
+
+	r.Delete("/", customerHandler.ResetTable) //move to owner route
+
 }
 
-func (a *App) loadProductRoutes (r chi.Router) {
+func (a *App) loadProductRoutes(r chi.Router) {
 	//allows for additional routs to be added easier
 	productHandler := &handler.Product{
 		DB: a.db,
@@ -83,7 +111,7 @@ func (a *App) loadProductRoutes (r chi.Router) {
 	r.Delete("/{id}", productHandler.DeleteById)
 }
 
-func (a *App) loadContractRoutes (r chi.Router) {
+func (a *App) loadContractRoutes(r chi.Router) {
 	//allows for additional routs to be added easier
 	contractHandler := &handler.Contract{
 		DB: a.db,
@@ -96,8 +124,7 @@ func (a *App) loadContractRoutes (r chi.Router) {
 	r.Delete("/{id}", contractHandler.DeleteById)
 }
 
-
-func (a *App) loadAdminRoutes (r chi.Router) {
+func (a *App) loadAdminRoutes(r chi.Router) {
 	//allows for additional routs to be added easier
 	adminHandler := &handler.Admin{
 		DB: a.db,
