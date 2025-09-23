@@ -17,20 +17,19 @@ type User struct {
 }
 
 type createUserRequest struct {
-	UserName  string    `json:"UserName"`
+	UserName string `json:"UserName"`
 }
 
 type updateUserRequest struct {
-	UserName	string	`json:"UserName"`
-	IsActive	bool	`json:"IsActive"`
+	UserName string `json:"UserName"`
+	IsActive bool   `json:"IsActive"`
 }
-
 
 func (u *User) Create(w http.ResponseWriter, r *http.Request) {
 
 	companyID, err := uuid.Parse(chi.URLParam(r, "companyID"))
 	if err != nil {
-		RespondWithError(w, http.StatusBadRequest, "Error missing or invalid user ID:", err)
+		RespondWithError(w, http.StatusBadRequest, "Error missing or invalid company ID:", err)
 		return
 	}
 
@@ -57,16 +56,16 @@ func (u *User) Create(w http.ResponseWriter, r *http.Request) {
 
 func (u *User) ListAll(w http.ResponseWriter, r *http.Request) {
 
-	ctx, cancel := context.WithTimeout(r.Context(), time.Second * 10)
+	ctx, cancel := context.WithTimeout(r.Context(), time.Second*10)
 	defer cancel()
 
-	companies, err := u.DB.GetAllUsers(ctx)
+	users, err := u.DB.GetAllUsers(ctx)
 	if err != nil {
-		RespondWithError(w, http.StatusInternalServerError, "Failed to retrieve companies list:", err)
+		RespondWithError(w, http.StatusInternalServerError, "Failed to retrieve users list:", err)
 		return
 	}
 
-	res, err := json.Marshal(companies)
+	res, err := json.Marshal(users)
 	if err != nil {
 		RespondWithError(w, http.StatusInternalServerError, "Failed to marshal response:", err)
 		return
@@ -81,7 +80,7 @@ func (u *User) List(w http.ResponseWriter, r *http.Request) {
 
 	companyID, err := uuid.Parse(chi.URLParam(r, "companyID"))
 	if err != nil {
-		RespondWithError(w, http.StatusBadRequest, "Error missing or invalid user ID:", err)
+		RespondWithError(w, http.StatusBadRequest, "Error missing or invalid company ID:", err)
 		return
 	}
 
@@ -108,7 +107,7 @@ func (u *User) GetById(w http.ResponseWriter, r *http.Request) {
 
 	companyID, err := uuid.Parse(chi.URLParam(r, "companyID"))
 	if err != nil {
-		RespondWithError(w, http.StatusBadRequest, "Error missing or invalid user ID:", err)
+		RespondWithError(w, http.StatusBadRequest, "Error missing or invalid company ID:", err)
 		return
 	}
 
@@ -144,11 +143,11 @@ func (u *User) GetByName(w http.ResponseWriter, r *http.Request) {
 
 	companyID, err := uuid.Parse(chi.URLParam(r, "companyID"))
 	if err != nil {
-		RespondWithError(w, http.StatusBadRequest, "Error missing or invalid user ID:", err)
+		RespondWithError(w, http.StatusBadRequest, "Error missing or invalid company ID:", err)
 		return
 	}
 
-	userName := strings.TrimSpace(chi.URLParam(r,"name"))
+	userName := strings.TrimSpace(chi.URLParam(r, "name"))
 
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
@@ -175,7 +174,7 @@ func (u *User) UpdateById(w http.ResponseWriter, r *http.Request) {
 
 	companyID, err := uuid.Parse(chi.URLParam(r, "companyID"))
 	if err != nil {
-		RespondWithError(w, http.StatusBadRequest, "Error missing or invalid user ID:", err)
+		RespondWithError(w, http.StatusBadRequest, "Error missing or invalid company ID:", err)
 		return
 	}
 
@@ -195,10 +194,10 @@ func (u *User) UpdateById(w http.ResponseWriter, r *http.Request) {
 		func() updateUserRequest { return updateUserRequest{} },
 		func(req updateUserRequest) (database.UpdateUserParams, error) {
 			return database.UpdateUserParams{
-				UserName: 	req.UserName,
-				IsActive: 	req.IsActive,
-				ID:        	userID,
-				CompanyID: 	companyID,
+				UserName:  req.UserName,
+				IsActive:  req.IsActive,
+				ID:        userID,
+				CompanyID: companyID,
 			}, nil
 		},
 		func(ctx context.Context, param database.UpdateUserParams) (database.User, error) {
@@ -213,7 +212,7 @@ func (u *User) DeleteById(w http.ResponseWriter, r *http.Request) {
 
 	companyID, err := uuid.Parse(chi.URLParam(r, "companyID"))
 	if err != nil {
-		RespondWithError(w, http.StatusBadRequest, "Error missing or invalid user ID:", err)
+		RespondWithError(w, http.StatusBadRequest, "Error missing or invalid company ID:", err)
 		return
 	}
 
@@ -247,12 +246,12 @@ func (u *User) DeleteById(w http.ResponseWriter, r *http.Request) {
 
 func (u *User) ResetTable(w http.ResponseWriter, r *http.Request) {
 
-	ctx, cancel := context.WithTimeout(r.Context(), time.Second * 10)
+	ctx, cancel := context.WithTimeout(r.Context(), time.Second*10)
 	defer cancel()
 
 	err := u.DB.ResetUsers(ctx)
 	if err != nil {
-		RespondWithError(w, http.StatusInternalServerError, "Failed to get company by ID:", err)
+		RespondWithError(w, http.StatusInternalServerError, "Failed to reset users table", err)
 		return
 	}
 
@@ -263,7 +262,7 @@ func (u *User) GetActive(w http.ResponseWriter, r *http.Request) {
 
 	companyID, err := uuid.Parse(chi.URLParam(r, "companyID"))
 	if err != nil {
-		RespondWithError(w, http.StatusBadRequest, "Error missing or invalid user ID:", err)
+		RespondWithError(w, http.StatusBadRequest, "Error missing or invalid company ID:", err)
 		return
 	}
 
@@ -290,7 +289,7 @@ func (u *User) SetActive(w http.ResponseWriter, r *http.Request) {
 
 	companyID, err := uuid.Parse(chi.URLParam(r, "companyID"))
 	if err != nil {
-		RespondWithError(w, http.StatusBadRequest, "Error missing or invalid user ID:", err)
+		RespondWithError(w, http.StatusBadRequest, "Error missing or invalid company ID:", err)
 		return
 	}
 
@@ -310,8 +309,8 @@ func (u *User) SetActive(w http.ResponseWriter, r *http.Request) {
 		func() setActiveRequest { return setActiveRequest{} },
 		func(req setActiveRequest) (database.SetUserActiveStatusParams, error) {
 			return database.SetUserActiveStatusParams{
-				IsActive: req.IsActive,
-				ID: userID,
+				IsActive:  req.IsActive,
+				ID:        userID,
 				CompanyID: companyID,
 			}, nil
 		},
