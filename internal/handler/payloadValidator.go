@@ -1,13 +1,138 @@
 package handler
 
 import (
+	"database/sql"
 	"fmt"
 	"math"
 	"strconv"
 	"strings"
+	"time"
 
+	"github.com/JonMunkholm/RevProject1/internal/database"
 	"github.com/google/uuid"
 )
+
+func (c *Contract) contractInputValidation(ct *database.CreateContractParams) error {
+	if ct == nil {
+		return fmt.Errorf("missing contract payload")
+	}
+
+	payload := contractPayload{
+		CompanyID:   ct.CompanyID,
+		CustomerID:  ct.CustomerID,
+		StartDate:   ct.StartDate,
+		EndDate:     ct.EndDate,
+		ContractURL: ct.ContractUrl,
+	}
+
+	if err := validateContractStrict(&payload); err != nil {
+		return err
+	}
+
+	ct.ContractUrl = payload.ContractURL
+
+	return nil
+}
+
+func (c *Contract) contractUpdateValidation(ct *database.UpdateContractParams) error {
+	if ct == nil {
+		return fmt.Errorf("missing contract payload")
+	}
+
+	payload := contractPayload{
+		CompanyID:   ct.CompanyID,
+		CustomerID:  ct.CustomerID,
+		StartDate:   ct.StartDate,
+		EndDate:     ct.EndDate,
+		ContractURL: ct.ContractUrl,
+	}
+
+	if err := validateContractStrict(&payload); err != nil {
+		return err
+	}
+
+	ct.ContractUrl = payload.ContractURL
+
+	return nil
+}
+
+type contractPayload struct {
+	CompanyID   uuid.UUID
+	CustomerID  uuid.UUID
+	StartDate   time.Time
+	EndDate     time.Time
+	ContractURL sql.NullString
+}
+
+type contractValidator func(*contractPayload) error
+
+func validateContractStrict(p *contractPayload) error {
+	return runContractValidators(p,
+		requireContractCompanyID(),
+		requireContractCustomerID(),
+		requireContractDates(),
+		normalizeContractURL(),
+	)
+}
+
+func runContractValidators(p *contractPayload, validators ...contractValidator) error {
+	for _, v := range validators {
+		if err := v(p); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func requireContractCompanyID() contractValidator {
+	return func(p *contractPayload) error {
+		if p.CompanyID == uuid.Nil {
+			return fmt.Errorf("CompanyID is required")
+		}
+		return nil
+	}
+}
+
+func requireContractCustomerID() contractValidator {
+	return func(p *contractPayload) error {
+		if p.CustomerID == uuid.Nil {
+			return fmt.Errorf("CustomerID is required")
+		}
+		return nil
+	}
+}
+
+func requireContractDates() contractValidator {
+	return func(p *contractPayload) error {
+		if p.StartDate.IsZero() {
+			return fmt.Errorf("StartDate is required")
+		}
+		if p.EndDate.IsZero() {
+			return fmt.Errorf("EndDate is required")
+		}
+		if !p.EndDate.After(p.StartDate) {
+			return fmt.Errorf("EndDate must be after StartDate")
+		}
+		return nil
+	}
+}
+
+func normalizeContractURL() contractValidator {
+	return func(p *contractPayload) error {
+		if !p.ContractURL.Valid {
+			return nil
+		}
+
+		trimmed := strings.TrimSpace(p.ContractURL.String)
+		if trimmed == "" {
+			p.ContractURL = sql.NullString{}
+			return nil
+		}
+
+		p.ContractURL = sql.NullString{String: trimmed, Valid: true}
+		return nil
+	}
+}
 
 // productPayload represents the product fields that share validation logic
 // across different handlers. Keeping it separate from sqlc structs makes it

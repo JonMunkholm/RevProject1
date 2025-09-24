@@ -313,7 +313,7 @@ func (p *Product) UpdateById(w http.ResponseWriter, r *http.Request) {
 		func(ctx context.Context, params database.UpdateProductParams) (database.Product, error) {
 			return p.DB.UpdateProduct(ctx, params)
 		},
-		http.StatusCreated,
+		http.StatusOK,
 	)
 
 }
@@ -391,8 +391,6 @@ func (p *Product) DeleteById(w http.ResponseWriter, r *http.Request) {
 
 }
 
-
-
 func (p *Product) ResetCompanyTable(w http.ResponseWriter, r *http.Request) {
 
 	companyID, err := uuid.Parse(chi.URLParam(r, "companyID"))
@@ -418,8 +416,6 @@ func (p *Product) ResetCompanyTable(w http.ResponseWriter, r *http.Request) {
 		http.StatusOK,
 	)
 }
-
-
 
 func (p *Product) ResetTable(w http.ResponseWriter, r *http.Request) {
 

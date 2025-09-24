@@ -47,6 +47,7 @@ func (a *App) loadCompanyRoutes(r chi.Router) {
 	r.Route("/{companyID}/customers", a.loadCustomerRoutes)
 	r.Route("/{companyID}/products", a.loadProductRoutes)
 	r.Route("/{companyID}/contracts", a.loadContractRoutes)
+	r.Route("/{companyID}/bundles", a.loadBundleRoutes)
 
 }
 
@@ -99,6 +100,7 @@ func (a *App) loadContractRoutes(r chi.Router) {
 
 func (a *App) loadProductRoutes(r chi.Router) {
 	productHandler := &handler.Product{DB: a.db}
+	bundleHandler := &handler.Bundle{DB: a.db}
 
 	r.Post("/", productHandler.Create)
 	r.Get("/", productHandler.List)
@@ -109,6 +111,27 @@ func (a *App) loadProductRoutes(r chi.Router) {
 	r.Put("/{productID}", productHandler.UpdateById)
 	r.Put("/{productID}/active", productHandler.SetActive)
 	r.Delete("/{productID}", productHandler.DeleteById)
+	r.Get("/{productID}/bundles", bundleHandler.GetBunsWithProd)
+}
+
+func (a *App) loadBundleRoutes(r chi.Router) {
+	bundleHandler := &handler.Bundle{DB: a.db}
+
+	r.Post("/", bundleHandler.Create)
+	r.Get("/", bundleHandler.List)
+	r.Get("/active", bundleHandler.GetActive)
+	r.Get("/by-name/{bundleName}", bundleHandler.GetByName)
+
+	r.Get("/{bundleID}", bundleHandler.GetByID)
+	r.Put("/{bundleID}", bundleHandler.UpdateById)
+	r.Delete("/{bundleID}", bundleHandler.DeleteByID)
+	r.Put("/{bundleID}/active", bundleHandler.SetBundleActiveStatus)
+
+	r.Put("/{bundleID}/products/{productID}", bundleHandler.AddProdToBun)
+	r.Delete("/{bundleID}/products/{productID}", bundleHandler.DeleteProdFromBun)
+	r.Get("/{bundleID}/products", bundleHandler.GetProdsInBun)
+	r.Get("/{bundleID}/products/detail", bundleHandler.GetProdsInBunDetail)
+	r.Delete("/{bundleID}/products", bundleHandler.ClearProdsFromBun)
 }
 
 func (a *App) loadAdminRoutes(r chi.Router) {
@@ -133,4 +156,9 @@ func (a *App) loadAdminRoutes(r chi.Router) {
 
 	productHandler := &handler.Product{DB: a.db}
 	r.Get("/products", productHandler.ListAll)
+
+	bundleHandler := &handler.Bundle{DB: a.db}
+	r.Get("/bundles", bundleHandler.ListAll)
+	r.Delete("/bundles", bundleHandler.ResetTableBun)
+	r.Delete("/bundle-products", bundleHandler.ResetTableProdBun)
 }

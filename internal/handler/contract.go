@@ -3,9 +3,7 @@ package handler
 import (
 	"context"
 	"database/sql"
-	"fmt"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/JonMunkholm/RevProject1/internal/database"
@@ -56,10 +54,7 @@ func (c *Contract) Create(w http.ResponseWriter, r *http.Request) {
 		func(req createContract) (database.CreateContractParams, error) {
 			contractURL := sql.NullString{}
 			if req.ContractUrl != nil {
-				trimmed := strings.TrimSpace(*req.ContractUrl)
-				if trimmed != "" {
-					contractURL = sql.NullString{String: trimmed, Valid: true}
-				}
+				contractURL = sql.NullString{String: *req.ContractUrl, Valid: true}
 			}
 
 			dbReq := database.CreateContractParams{
@@ -74,6 +69,7 @@ func (c *Contract) Create(w http.ResponseWriter, r *http.Request) {
 			if err := c.contractInputValidation(&dbReq); err != nil {
 				return dbReq, err
 			}
+
 			return dbReq, nil
 		},
 		func(ctx context.Context, params database.CreateContractParams) (database.Contract, error) {
@@ -255,13 +251,10 @@ func (c *Contract) UpdateById(w http.ResponseWriter, r *http.Request) {
 		func(req updateContract) (database.UpdateContractParams, error) {
 			contractURL := sql.NullString{}
 			if req.ContractUrl != nil {
-				trimmed := strings.TrimSpace(*req.ContractUrl)
-				if trimmed != "" {
-					contractURL = sql.NullString{String: trimmed, Valid: true}
-				}
+				contractURL = sql.NullString{String: *req.ContractUrl, Valid: true}
 			}
 
-			return database.UpdateContractParams{
+			dbReq := database.UpdateContractParams{
 				CustomerID:  req.CustomerID,
 				StartDate:   req.StartDate,
 				EndDate:     req.EndDate,
@@ -269,7 +262,13 @@ func (c *Contract) UpdateById(w http.ResponseWriter, r *http.Request) {
 				ContractUrl: contractURL,
 				ID:          contractID,
 				CompanyID:   companyID,
-			}, nil
+			}
+
+			if err := c.contractUpdateValidation(&dbReq); err != nil {
+				return dbReq, err
+			}
+
+			return dbReq, nil
 		},
 		func(ctx context.Context, param database.UpdateContractParams) (database.Contract, error) {
 			return c.DB.UpdateContract(ctx, param)
@@ -327,41 +326,4 @@ func (c *Contract) ResetTable(w http.ResponseWriter, r *http.Request) {
 	}
 
 	RespondWithJSON(w, http.StatusOK, struct{}{})
-}
-
-func (c *Contract) contractInputValidation(ct *database.CreateContractParams) error {
-	if ct == nil {
-		return fmt.Errorf("missing contract payload")
-	}
-
-	if ct.CompanyID == uuid.Nil {
-		return fmt.Errorf("CompanyID is required")
-	}
-
-	if ct.CustomerID == uuid.Nil {
-		return fmt.Errorf("CustomerID is required")
-	}
-
-	if ct.StartDate.IsZero() {
-		return fmt.Errorf("StartDate is required")
-	}
-
-	if ct.EndDate.IsZero() {
-		return fmt.Errorf("EndDate is required")
-	}
-
-	if !ct.EndDate.After(ct.StartDate) {
-		return fmt.Errorf("EndDate must be after StartDate")
-	}
-
-	if ct.ContractUrl.Valid {
-		trimmed := strings.TrimSpace(ct.ContractUrl.String)
-		if trimmed == "" {
-			ct.ContractUrl.Valid = false
-		} else {
-			ct.ContractUrl.String = trimmed
-		}
-	}
-
-	return nil
 }
