@@ -307,3 +307,94 @@ func parsePrice(label, value string) (float64, error) {
 func floatEquals(a, b float64) bool {
 	return math.Abs(a-b) <= 1e-9
 }
+
+type performanceObPayload struct {
+	PerformanceObligationsName string
+	StartDate                  time.Time
+	EndDate                    time.Time
+	FunctionalCurrency         string
+	Discount                   string
+	TransactionPrice           int64
+}
+
+type performanceObValidator func(*performanceObPayload) error
+
+func validatePerformanceObStrict(p *performanceObPayload) error {
+	return runPerformanceObValidators(p,
+		requirePerformanceObName(),
+		requirePerformanceObDates(),
+		requirePerformanceObCurrency(),
+		requirePerformanceObDiscount(),
+		requirePerformanceObTransactionPrice(),
+	)
+}
+
+func runPerformanceObValidators(p *performanceObPayload, validators ...performanceObValidator) error {
+	for _, v := range validators {
+		if err := v(p); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func requirePerformanceObName() performanceObValidator {
+	return func(p *performanceObPayload) error {
+		name := strings.TrimSpace(p.PerformanceObligationsName)
+		if name == "" {
+			return fmt.Errorf("PerformanceObligationsName is required")
+		}
+		if len(name) > 255 {
+			return fmt.Errorf("PerformanceObligationsName exceeds 255 characters")
+		}
+		p.PerformanceObligationsName = name
+		return nil
+	}
+}
+
+func requirePerformanceObDates() performanceObValidator {
+	return func(p *performanceObPayload) error {
+		if p.StartDate.IsZero() {
+			return fmt.Errorf("StartDate is required")
+		}
+		if p.EndDate.IsZero() {
+			return fmt.Errorf("EndDate is required")
+		}
+		if !p.EndDate.After(p.StartDate) {
+			return fmt.Errorf("EndDate must be after StartDate")
+		}
+		return nil
+	}
+}
+
+func requirePerformanceObCurrency() performanceObValidator {
+	return func(p *performanceObPayload) error {
+		code := strings.ToUpper(strings.TrimSpace(p.FunctionalCurrency))
+		if len(code) != 3 {
+			return fmt.Errorf("FunctionalCurrency must be a 3-letter ISO code")
+		}
+		p.FunctionalCurrency = code
+		return nil
+	}
+}
+
+func requirePerformanceObDiscount() performanceObValidator {
+	return func(p *performanceObPayload) error {
+		discount := strings.TrimSpace(p.Discount)
+		value, err := parsePercent("Discount", discount)
+		if err != nil {
+			return err
+		}
+		p.Discount = fmt.Sprintf("%.5f", value)
+		return nil
+	}
+}
+
+func requirePerformanceObTransactionPrice() performanceObValidator {
+	return func(p *performanceObPayload) error {
+		if p.TransactionPrice < 0 {
+			return fmt.Errorf("TransactionPrice must be greater than or equal to zero")
+		}
+		return nil
+	}
+}

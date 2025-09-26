@@ -47,6 +47,7 @@ func (a *App) loadCompanyRoutes(r chi.Router) {
 	r.Route("/{companyID}/customers", a.loadCustomerRoutes)
 	r.Route("/{companyID}/products", a.loadProductRoutes)
 	r.Route("/{companyID}/contracts", a.loadContractRoutes)
+	r.Route("/{companyID}/performance-obligations", a.loadPerformanceObRoutes)
 	r.Route("/{companyID}/bundles", a.loadBundleRoutes)
 
 }
@@ -86,6 +87,7 @@ func (a *App) loadContractRoutes(r chi.Router) {
 	contractHandler := &handler.Contract{
 		DB: a.db,
 	}
+	performanceObHandler := &handler.PerformanceObligation{DB: a.db}
 
 	r.Post("/", contractHandler.Create)
 	r.Get("/", contractHandler.List)
@@ -95,6 +97,14 @@ func (a *App) loadContractRoutes(r chi.Router) {
 	r.Get("/{contractID}", contractHandler.GetById)
 	r.Put("/{contractID}", contractHandler.UpdateById)
 	r.Delete("/{contractID}", contractHandler.DeleteById)
+
+	r.Route("/{contractID}/performance-obligations", func(r chi.Router) {
+		r.Post("/", performanceObHandler.Create)
+		r.Get("/", performanceObHandler.GetForContract)
+		r.Get("/{performanceObID}", performanceObHandler.GetById)
+		r.Put("/{performanceObID}", performanceObHandler.UpdateById)
+		r.Delete("/{performanceObID}", performanceObHandler.DeleteById)
+	})
 
 }
 
@@ -111,6 +121,7 @@ func (a *App) loadProductRoutes(r chi.Router) {
 	r.Put("/{productID}", productHandler.UpdateById)
 	r.Put("/{productID}/active", productHandler.SetActive)
 	r.Delete("/{productID}", productHandler.DeleteById)
+	r.Get("/{productID}/performance-obligations", bundleHandler.GetPerformObInProds)
 	r.Get("/{productID}/bundles", bundleHandler.GetBunsWithProd)
 }
 
@@ -132,6 +143,30 @@ func (a *App) loadBundleRoutes(r chi.Router) {
 	r.Get("/{bundleID}/products", bundleHandler.GetProdsInBun)
 	r.Get("/{bundleID}/products/detail", bundleHandler.GetProdsInBunDetail)
 	r.Delete("/{bundleID}/products", bundleHandler.ClearProdsFromBun)
+	r.Get("/{bundleID}/performance-obligations", bundleHandler.GetPerformObInBuns)
+}
+
+func (a *App) loadPerformanceObRoutes(r chi.Router) {
+	performanceObHandler := &handler.PerformanceObligation{DB: a.db}
+	bundleHandler := &handler.Bundle{DB: a.db}
+
+	r.Get("/", performanceObHandler.List)
+	r.Get("/{performanceObID}", performanceObHandler.GetById)
+	r.Delete("/{performanceObID}", performanceObHandler.DeleteById)
+
+	r.Route("/{performanceObID}/products", func(r chi.Router) {
+		r.Get("/", bundleHandler.GetProdsInPerformOb)
+		r.Put("/{productID}", bundleHandler.AddProdToPerformOb)
+		r.Delete("/{productID}", bundleHandler.DeleteProdToPerformOb)
+		r.Delete("/", bundleHandler.ClearProdsFromPerformOb)
+	})
+
+	r.Route("/{performanceObID}/bundles", func(r chi.Router) {
+		r.Get("/", bundleHandler.GetBunsInPerformOb)
+		r.Put("/{bundleID}", bundleHandler.AddBunToPerformOb)
+		r.Delete("/{bundleID}", bundleHandler.DeleteBunToPerformOb)
+		r.Delete("/", bundleHandler.ClearBunsFromPerformOb)
+	})
 }
 
 func (a *App) loadAdminRoutes(r chi.Router) {
@@ -157,8 +192,14 @@ func (a *App) loadAdminRoutes(r chi.Router) {
 	productHandler := &handler.Product{DB: a.db}
 	r.Get("/products", productHandler.ListAll)
 
+	performanceObHandler := &handler.PerformanceObligation{DB: a.db}
+	r.Get("/performance-obligations", performanceObHandler.ListAll)
+	r.Delete("/performance-obligations", performanceObHandler.ResetTable)
+
 	bundleHandler := &handler.Bundle{DB: a.db}
 	r.Get("/bundles", bundleHandler.ListAll)
 	r.Delete("/bundles", bundleHandler.ResetTableBun)
 	r.Delete("/bundle-products", bundleHandler.ResetTableProdBun)
+	r.Delete("/performance-obligation-products", bundleHandler.ResetTableProdPerformOb)
+	r.Delete("/performance-obligation-bundles", bundleHandler.ResetTableBunPerformOb)
 }
