@@ -3,24 +3,189 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>HTMX Starter</title>
-    <!-- HTMX CDN inclusion -->
-    <script
-      src="https://cdn.jsdelivr.net/npm/htmx.org@2.0.7/dist/htmx.min.js"
-      integrity="sha384-ZBXiYtYQ6hJ2Y0ZNoYuI+Nq5MqWBr+chMrS/RkXpNzQCApHEhOt2aY8EJgqwHLkJ"
-      crossorigin="anonymous"
-    ></script>
+    <title>RevProject Portal</title>
+    <link rel="preload" href="fonts/Inter-400.ttf" as="font" type="font/ttf" crossorigin />
+    <link rel="preload" href="fonts/Inter-500.ttf" as="font" type="font/ttf" crossorigin />
+    <link rel="preload" href="fonts/Inter-600.ttf" as="font" type="font/ttf" crossorigin />
+    <link rel="preload" href="fonts/Inter-700.ttf" as="font" type="font/ttf" crossorigin />
+    <link rel="stylesheet" href="styles.css" />
   </head>
-  <body>
-    <h1>Welcome to HTMX!</h1>
+  <body class="is-loading">
+    <main>
+      <section class="hero">
+        <span class="hero-kicker">Revenue Operations Platform</span>
+        <h1>
+          Own your contracts and performance obligations without friction.
+        </h1>
+        <p>
+          Bring companies, customers, products, and bundles together in one
+          command center. Lightning-fast updates keep revenue teams and finance
+          aligned in real time.
+        </p>
+        <ul>
+          <li>
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path d="M20 6L9 17l-5-5" />
+            </svg>
+            Context-aware dashboards that scale with your contracts.
+          </li>
+          <li>
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path d="M3 6h18M3 12h12M3 18h6" />
+            </svg>
+            Built on HTMX for ultra-responsive interactions without heavyweight
+            bundles.
+          </li>
+          <li>
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path d="M12 20l9-5-9-5-9 5 9 5z" />
+              <path d="M12 12l9-5-9-5-9 5 9 5z" />
+            </svg>
+            Secure role-based access for admins, owners, and operations teams.
+          </li>
+        </ul>
+      </section>
 
-    <button hx-post="/click" hx-swap="outerHTML">Click Me</button>
+      <section class="card">
+        <header>
+          <h2>Sign in to continue</h2>
+          <p class="card-subtitle">
+            Use your company credentials to access RevProject.
+          </p>
+        </header>
 
-    <div id="content">This content will be replaced by HTMX.</div>
+        <form
+          hx-post="/auth/login"
+          hx-target="#login-message"
+          hx-swap="innerHTML"
+          hx-indicator="#login-indicator"
+          hx-vals="js:{ timezoneOffset: new Date().getTimezoneOffset() }"
+        >
+          <label>
+            Company ID
+            <input
+              type="text"
+              name="companyID"
+              class="input-field"
+              autocomplete="organization"
+              required
+              placeholder="acme-co-123"
+            />
+          </label>
 
-    <!-- Example of a simple HTMX request -->
-    <button hx-get="/data" hx-target="#content" hx-swap="innerHTML">
-      Load Data
-    </button>
+          <label>
+            Email address
+            <input
+              type="email"
+              name="email"
+              class="input-field"
+              autocomplete="email"
+              required
+              placeholder="team@company.com"
+            />
+          </label>
+
+          <label>
+            Password
+            <input
+              type="password"
+              name="password"
+              class="input-field"
+              autocomplete="current-password"
+              required
+              minlength="8"
+              placeholder="Enter your password"
+            />
+          </label>
+
+          <div class="form-row">
+            <label class="remember-option">
+              <input type="checkbox" name="remember" value="true" />
+              Remember me
+            </label>
+            <a href="/forgot-password" class="form-link">Forgot password?</a>
+          </div>
+
+          <button type="submit">Log in</button>
+
+          <div
+            id="login-indicator"
+            class="htmx-indicator"
+            aria-live="polite"
+            aria-hidden="true"
+          >
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle cx="12" cy="12" r="9" stroke-opacity="0.2" />
+              <path d="M21 12a9 9 0 0 1-9 9" />
+            </svg>
+            Authenticating…
+          </div>
+
+          <p id="login-message" class="message" aria-live="polite"></p>
+        </form>
+
+        <div class="alt-actions">
+          <span>Need an account?</span>
+          <a href="/request-access">Request company access</a>
+        </div>
+      </section>
+    </main>
+    <script>
+      (function () {
+        function removeLoadingClass() {
+          document.body.classList.remove('is-loading');
+        }
+
+        if (document.readyState === 'loading') {
+          document.addEventListener('DOMContentLoaded', removeLoadingClass, {
+            once: true,
+          });
+        } else {
+          removeLoadingClass();
+        }
+
+        function injectHTMX() {
+          if (document.documentElement.dataset.htmxLoaded) return;
+          document.documentElement.dataset.htmxLoaded = 'true';
+          var script = document.createElement('script');
+          script.src = 'https://cdn.jsdelivr.net/npm/htmx.org@2.0.7/dist/htmx.min.js';
+          script.integrity = 'sha384-ZBXiYtYQ6hJ2Y0ZNoYuI+Nq5MqWBr+chMrS/RkXpNzQCApHEhOt2aY8EJgqwHLkJ';
+          script.crossOrigin = 'anonymous';
+          document.head.appendChild(script);
+        }
+
+        if ('requestIdleCallback' in window) {
+          requestIdleCallback(injectHTMX);
+        } else {
+          window.addEventListener('load', injectHTMX, { once: true });
+        }
+      })();
+    </script>
   </body>
 </html>

@@ -1,0 +1,434 @@
+@font-face {
+  font-family: 'Inter';
+  src: url('fonts/Inter-400.ttf') format('truetype');
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Inter';
+  src: url('fonts/Inter-500.ttf') format('truetype');
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Inter';
+  src: url('fonts/Inter-600.ttf') format('truetype');
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Inter';
+  src: url('fonts/Inter-700.ttf') format('truetype');
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Inter Fallback';
+  src: local('Arial');
+  ascent-override: 90%;
+  descent-override: 22%;
+  line-gap-override: 0%;
+  size-adjust: 107%;
+}
+
+:root {
+  color-scheme: light dark;
+  --bg: #0f172a;
+  --bg-card: rgba(15, 23, 42, 0.7);
+  --bg-light: #f8fafc;
+  --text: #0f172a;
+  --text-inverse: #f8fafc;
+  --accent: #38bdf8;
+  --accent-strong: #0ea5e9;
+  --border: rgba(148, 163, 184, 0.4);
+  font-family: 'Inter', 'Inter Fallback', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --layout-max-width: 1200px;
+  --layout-gap: clamp(2rem, 4vw, 4rem);
+  --layout-padding-block: clamp(2rem, 5vw, 4rem);
+  --layout-padding-inline: clamp(1.5rem, 4vw, 3rem);
+  --column-min: 280px;
+  --hero-gap: clamp(1.1rem, 3vw, 1.6rem);
+  --hero-body: rgba(226, 232, 240, 0.85);
+  --hero-list: rgba(226, 232, 240, 0.9);
+  --hero-kicker: rgba(226, 232, 240, 0.55);
+  --hero-title-size: clamp(2.4rem, 6vw, 3.6rem);
+  --card-padding: clamp(1.75rem, 4vw, 2.75rem);
+  --card-gap: clamp(1.1rem, 3.5vw, 1.6rem);
+  --card-radius: clamp(1rem, 2.5vw, 1.25rem);
+  --card-blur: 20px;
+  --indicator-font-size: clamp(0.85rem, 2.2vw, 0.95rem);
+  --transition-speed: 0.2s;
+  --form-gap: clamp(1rem, 3vw, 1.25rem);
+  --label-gap: clamp(0.4rem, 1.8vw, 0.55rem);
+  --input-padding-y: clamp(0.75rem, 2.4vw, 0.9rem);
+  --input-padding-x: clamp(0.9rem, 3vw, 1.15rem);
+  --input-radius: clamp(0.75rem, 2.2vw, 0.95rem);
+  --button-padding-y: clamp(0.75rem, 2.6vw, 0.95rem);
+  --button-padding-x: clamp(1rem, 3.2vw, 1.3rem);
+  --button-radius: clamp(0.75rem, 2.2vw, 0.95rem);
+  --alt-gap: clamp(0.65rem, 2.4vw, 0.85rem);
+  --alt-font: clamp(0.85rem, 2.4vw, 0.95rem);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  display: flex;
+  align-items: stretch;
+  background: radial-gradient(circle at top left, #1e293b, #020617 60%);
+  color: var(--text-inverse);
+}
+
+main {
+  width: min(var(--layout-max-width), 100%);
+  margin: 0 auto;
+  padding: var(--layout-padding-block) var(--layout-padding-inline);
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(var(--column-min), 1fr));
+  gap: var(--layout-gap);
+  align-items: center;
+  opacity: 1;
+  transform: translateY(0);
+  transition:
+    opacity 0.45s cubic-bezier(0.22, 0.61, 0.36, 1),
+    transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+body.is-loading main {
+  opacity: 0;
+  transform: translateY(6px);
+}
+
+.hero {
+  display: grid;
+  gap: var(--hero-gap);
+}
+
+.hero h1 {
+  margin: 0;
+  font-size: var(--hero-title-size);
+  line-height: 1.05;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+}
+
+.hero p {
+  margin: 0;
+  max-width: 34ch;
+  font-size: clamp(1rem, 2.4vw, 1.15rem);
+  color: var(--hero-body);
+}
+
+.hero-kicker {
+  text-transform: uppercase;
+  letter-spacing: 0.3em;
+  font-size: clamp(0.7rem, 1.6vw, 0.85rem);
+  color: var(--hero-kicker);
+}
+
+.hero ul {
+  display: grid;
+  gap: clamp(0.65rem, 2.2vw, 0.95rem);
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.hero li {
+  display: flex;
+  align-items: center;
+  gap: clamp(0.6rem, 2.4vw, 0.85rem);
+  font-weight: 500;
+  color: var(--hero-list);
+}
+
+.hero svg {
+  flex-shrink: 0;
+  width: 1.25rem;
+  height: 1.25rem;
+  color: var(--accent);
+}
+
+.card {
+  backdrop-filter: blur(var(--card-blur));
+  background: var(--bg-card);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: var(--card-radius);
+  padding: var(--card-padding);
+  display: grid;
+  gap: var(--card-gap);
+  box-shadow: 0 30px 60px rgba(8, 47, 73, 0.45);
+}
+
+.card header h2 {
+  margin: 0;
+  font-size: clamp(1.35rem, 3vw, 1.7rem);
+  font-weight: 600;
+}
+
+.card-subtitle {
+  margin: 0;
+  color: rgba(226, 232, 240, 0.75);
+  font-size: clamp(0.9rem, 2vw, 1rem);
+}
+
+form {
+  display: grid;
+  gap: var(--form-gap);
+}
+
+.form-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: clamp(0.75rem, 2.4vw, 1.5rem);
+}
+
+label {
+  display: grid;
+  gap: var(--label-gap);
+  font-weight: 500;
+}
+
+.input-field {
+  width: 100%;
+  padding: var(--input-padding-y) var(--input-padding-x);
+  border-radius: var(--input-radius);
+  border: 1px solid var(--border);
+  font: inherit;
+  background: rgba(15, 23, 42, 0.35);
+  color: inherit;
+  transition: border var(--transition-speed) ease, transform var(--transition-speed) ease;
+}
+
+.input-field:focus {
+  outline: none;
+  border-color: var(--accent);
+  transform: translateY(-1px);
+}
+
+button[type='submit'] {
+  border: none;
+  border-radius: var(--button-radius);
+  padding: var(--button-padding-y) var(--button-padding-x);
+  font: inherit;
+  font-weight: 600;
+  background: linear-gradient(135deg, var(--accent) 0%, var(--accent-strong) 100%);
+  color: var(--text-inverse);
+  cursor: pointer;
+  transition: transform var(--transition-speed) ease, box-shadow var(--transition-speed) ease;
+}
+
+button[type='submit']:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 18px 32px rgba(14, 165, 233, 0.35);
+}
+
+button[type='submit']:active {
+  transform: translateY(1px);
+  box-shadow: none;
+}
+
+.alt-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--alt-gap);
+  font-size: var(--alt-font);
+  color: rgba(226, 232, 240, 0.8);
+}
+
+.alt-actions a,
+.form-link {
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-color: rgba(56, 189, 248, 0.6);
+  text-underline-offset: 0.2em;
+}
+
+.form-link {
+  font-size: clamp(0.85rem, 2.2vw, 0.95rem);
+  color: var(--accent);
+}
+
+.form-link:hover {
+  color: var(--accent-strong);
+}
+
+.remember-option {
+  display: inline-flex;
+  align-items: center;
+  gap: clamp(0.35rem, 1.6vw, 0.55rem);
+  font-size: clamp(0.85rem, 2.2vw, 0.95rem);
+  font-weight: 400;
+}
+
+.remember-option input[type='checkbox'] {
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.message {
+  min-height: 1.25rem;
+  font-size: clamp(0.85rem, 2.4vw, 0.95rem);
+  color: #f97316;
+}
+
+.success {
+  color: #34d399;
+}
+
+
+.htmx-indicator {
+  display: none;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: var(--indicator-font-size);
+  color: rgba(226, 232, 240, 0.8);
+  margin-top: -0.25rem;
+}
+
+.htmx-indicator.htmx-request {
+  display: inline-flex;
+}
+
+.htmx-indicator svg {
+  width: 1rem;
+  height: 1rem;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (max-width: 720px) {
+  body {
+    background: linear-gradient(180deg, #020617 0%, #0f172a 70%);
+  }
+
+  .card {
+    order: -1;
+  }
+
+  main {
+    grid-template-columns: 1fr;
+  }
+
+  .hero {
+    text-align: center;
+  }
+
+  .hero ul {
+    justify-items: center;
+  }
+
+  .hero-kicker {
+    justify-self: center;
+  }
+
+  .form-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .form-row .form-link {
+    align-self: flex-end;
+  }
+}
+
+@media (max-width: 960px) {
+  :root {
+    --layout-gap: clamp(1.75rem, 5vw, 3rem);
+    --layout-padding-block: clamp(1.75rem, 6vw, 3.25rem);
+    --layout-padding-inline: clamp(1.25rem, 6vw, 2.5rem);
+    --card-padding: clamp(1.5rem, 5vw, 2.5rem);
+    --card-blur: 16px;
+    --hero-gap: clamp(1rem, 3vw, 1.35rem);
+    --form-gap: clamp(0.95rem, 3vw, 1.15rem);
+    --input-padding-y: clamp(0.7rem, 2.4vw, 0.85rem);
+    --button-padding-y: clamp(0.7rem, 2.6vw, 0.9rem);
+    --card-gap: clamp(1rem, 3vw, 1.4rem);
+  }
+}
+
+@media (max-width: 540px) {
+  :root {
+    --column-min: 100%;
+    --card-gap: 1.25rem;
+    --card-radius: 1rem;
+    --transition-speed: 0.18s;
+    --layout-gap: clamp(1.5rem, 6vw, 2.5rem);
+    --form-gap: clamp(0.9rem, 4vw, 1.1rem);
+    --label-gap: clamp(0.35rem, 2.4vw, 0.5rem);
+    --alt-gap: clamp(0.55rem, 3vw, 0.75rem);
+    --alt-font: clamp(0.8rem, 3vw, 0.9rem);
+    --input-padding-x: clamp(0.85rem, 4vw, 1rem);
+    --input-radius: clamp(0.7rem, 3vw, 0.9rem);
+    --button-radius: clamp(0.7rem, 3vw, 0.9rem);
+  }
+
+  main {
+    justify-items: stretch;
+  }
+
+  .hero-kicker,
+  .hero p {
+    text-align: center;
+  }
+
+  .hero li {
+    justify-content: center;
+    text-align: left;
+  }
+
+  .form-row .form-link {
+    align-self: center;
+  }
+
+  .remember-option {
+    justify-content: center;
+  }
+}
+
+@media (min-width: 1440px) {
+  :root {
+    --layout-max-width: 1320px;
+    --layout-gap: clamp(2.5rem, 4vw, 5rem);
+    --card-padding: clamp(2rem, 3vw, 3rem);
+    --card-blur: 24px;
+    --column-min: 340px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  .htmx-indicator svg {
+    animation: none;
+  }
+
+  body.is-loading main {
+    transform: none;
+  }
+}
