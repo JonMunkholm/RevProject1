@@ -1,0 +1,181 @@
+Table companies {
+  ID uuid [pk, default: `gen_random_uuid()`]
+  Company_Name citext [not null]
+  Created_At timestamp [not null, default: `CURRENT_TIMESTAMP`]
+  Updated_At timestamp [not null, default: `CURRENT_TIMESTAMP`]
+  Is_Active bool [not null, default: true]
+
+  indexes {
+    (Company_Name) [unique]
+  }
+}
+
+Table users {
+  ID uuid [pk, default: `gen_random_uuid()`]
+  User_Name citext [not null]
+  Created_At timestamp [not null, default: `CURRENT_TIMESTAMP`]
+  Updated_At timestamp [not null, default: `CURRENT_TIMESTAMP`]
+  Company_ID uuid [not null]
+  Is_Active bool [not null, default: true]
+
+  indexes {
+    (Company_ID, User_Name) [unique]
+    (Company_ID)
+  }
+
+  note: 'Name must be trimmed non-blank.'
+}
+
+Table customers {
+  ID uuid [pk, default: `gen_random_uuid()`]
+  Customer_Name citext [not null]
+  Created_At timestamp [not null, default: `CURRENT_TIMESTAMP`]
+  Updated_At timestamp [not null, default: `CURRENT_TIMESTAMP`]
+  Is_Active bool [not null, default: true]
+  Company_ID uuid [not null]
+
+  indexes {
+    (Company_ID, Customer_Name) [unique]
+    (Company_ID)
+  }
+
+  note: 'Name must be trimmed non-blank.'
+}
+
+Table contracts {
+  ID uuid [pk, default: `gen_random_uuid()`]
+  Company_ID uuid [not null]
+  Customer_ID uuid [not null]
+  Created_At timestamp [not null, default: `CURRENT_TIMESTAMP`]
+  Updated_At timestamp [not null, default: `CURRENT_TIMESTAMP`]
+  Start_Date timestamp [not null]
+  End_Date timestamp [not null]
+  Is_Final bool [not null, default: false]
+  Contract_URL text
+
+  indexes {
+    (Company_ID)
+    (Company_ID, Customer_ID)
+  }
+
+  note: 'End_Date must be greater than Start_Date.'
+}
+
+Table products {
+  ID uuid [pk, default: `gen_random_uuid()`]
+  Prod_Name citext [not null]
+  Rev_Assessment varchar(20) [not null]
+  Over_Time_Percent numeric(5,4) [not null]
+  Point_In_Time_Percent numeric(5,4) [not null]
+  Standalone_Selling_Price_Method varchar(50) [not null]
+  Standalone_Selling_Price_Price_High numeric [not null]
+  Standalone_Selling_Price_Price_Low numeric [not null]
+  Company_ID uuid [not null]
+  Is_Active bool [not null, default: true]
+  Default_Currency varchar(3) [not null]
+  Created_At timestamp [not null, default: `CURRENT_TIMESTAMP`]
+  Updated_At timestamp [not null, default: `CURRENT_TIMESTAMP`]
+
+  indexes {
+    (Company_ID, Prod_Name) [unique]
+    (ID, Company_ID) [unique]
+    (Company_ID)
+  }
+
+  note: 'Rev_Assessment limited to over_time, point_in_time, split. Percent fields constrained to 0-1 and must align with assessment. Currency must match ISO-4217 format.'
+}
+
+Table bundles {
+  ID uuid [pk, default: `gen_random_uuid()`]
+  Bundle_Name citext [not null]
+  Is_Active bool [not null, default: true]
+  Company_ID uuid [not null]
+  Created_At timestamp [not null, default: `CURRENT_TIMESTAMP`]
+  Updated_At timestamp [not null, default: `CURRENT_TIMESTAMP`]
+
+  indexes {
+    (Company_ID, Bundle_Name) [unique]
+    (ID, Company_ID) [unique]
+    (Company_ID)
+  }
+
+  note: 'Name must be trimmed non-blank.'
+}
+
+Table bundle_products {
+  Bundle_ID uuid [not null]
+  Product_ID uuid [not null]
+  Company_ID uuid [not null]
+
+  indexes {
+    (Bundle_ID, Product_ID) [pk]
+    (Company_ID, Bundle_ID)
+    (Company_ID, Product_ID)
+  }
+}
+
+Table performance_obligations {
+  ID uuid [pk, default: `gen_random_uuid()`]
+  Performance_Obligations_Name citext [not null]
+  Contract_ID uuid [not null]
+  Created_At timestamp [not null, default: `CURRENT_TIMESTAMP`]
+  Updated_At timestamp [not null, default: `CURRENT_TIMESTAMP`]
+  Start_Date timestamp [not null]
+  End_Date timestamp [not null]
+  Functional_Currency varchar(3) [not null]
+  Discount numeric(6,5) [not null]
+  Transaction_Price bigint [not null]
+
+  note: 'Associated contract drives lifecycle; date fields define obligation window.'
+}
+
+Table product_performance_obligations {
+  Product_ID uuid [not null]
+  Performance_Obligations_ID uuid [not null]
+
+  indexes {
+    (Product_ID, Performance_Obligations_ID) [pk]
+  }
+}
+
+Table bundle_performance_obligations {
+  Bundle_ID uuid [not null]
+  Performance_Obligations_ID uuid [not null]
+
+  indexes {
+    (Bundle_ID, Performance_Obligations_ID) [pk]
+  }
+}
+
+Table refresh_tokens {
+  ID uuid [pk, default: `gen_random_uuid()`]
+  User_ID uuid [not null, ref: > users.ID]
+  Token_Hash bytea [not null, unique]
+  Issued_IP inet
+  User_Agent text
+  Created_At timestamp [not null, default: `CURRENT_TIMESTAMP`]
+  Updated_At timestamp [not null, default: `CURRENT_TIMESTAMP`]
+  Expires_At timestamp [not null]
+  Revoked_At timestamp
+
+  indexes {
+    (User_ID) [name: 'idx_refresh_tokens_user_active', where: 'Revoked_At IS NULL']
+    (Expires_At) [name: 'idx_refresh_tokens_expires']
+  }
+}
+
+
+Ref: users.Company_ID > companies.ID [delete: cascade]
+Ref: customers.Company_ID > companies.ID [delete: cascade]
+Ref: contracts.Company_ID > companies.ID [delete: cascade]
+Ref: contracts.Customer_ID > customers.ID
+Ref: products.Company_ID > companies.ID [delete: cascade]
+Ref: bundles.Company_ID > companies.ID [delete: cascade]
+Ref: bundle_products.(Bundle_ID, Company_ID) > bundles.(ID, Company_ID) [delete: cascade]
+Ref: bundle_products.(Product_ID, Company_ID) > products.(ID, Company_ID) [delete: cascade]
+Ref: bundle_products.Company_ID > companies.ID [delete: cascade]
+Ref: performance_obligations.Contract_ID > contracts.ID [delete: cascade]
+Ref: product_performance_obligations.Product_ID > products.ID [delete: cascade]
+Ref: product_performance_obligations.Performance_Obligations_ID > performance_obligations.ID [delete: cascade]
+Ref: bundle_performance_obligations.Bundle_ID > bundles.ID [delete: cascade]
+Ref: bundle_performance_obligations.Performance_Obligations_ID > performance_obligations.ID [delete: cascade]
