@@ -1,0 +1,7 @@
+./client.go
+./diagnosticcache.go
+./documentcontents.go
+./rewrite.go
+./server.go
+./snippets.go
+./sourcemapcache.go

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/sqlc-dev/pqtype"
 )
 
 type Bundle struct {
@@ -92,6 +93,18 @@ type Product struct {
 type ProductPerformanceObligation struct {
 	ProductID                uuid.UUID
 	PerformanceObligationsID uuid.UUID
+}
+
+type RefreshToken struct {
+	ID        uuid.UUID
+	UserID    uuid.UUID
+	TokenHash []byte
+	IssuedIp  pqtype.Inet
+	UserAgent sql.NullString
+	CreatedAt time.Time
+	UpdatedAt time.Time
+	ExpiresAt time.Time
+	RevokedAt sql.NullTime
 }
 
 type User struct {

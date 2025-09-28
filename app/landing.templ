@@ -1,0 +1,175 @@
+package app
+
+type capability struct {
+    Title       string
+    Description string
+}
+
+var platformCapabilities = []capability{
+    {
+        Title:       "Model companies and hierarchies",
+        Description: "Register new companies, set active status, and invite operators with role-aware access controls.",
+    },
+    {
+        Title:       "Map customers and contracts",
+        Description: "Connect customers to contracts, attach supporting performance obligations, and see fulfillment status in one view.",
+    },
+    {
+        Title:       "Bundle products with intent",
+        Description: "Compose products into bundles, reuse obligations, and reuse pricing packages across revenue workflows.",
+    },
+    {
+        Title:       "Operational tooling ready",
+        Description: "Reset seed data, audit recent imports, and manage administrative tasks without leaving the dashboard.",
+    },
+}
+
+templ Layout(title string, body templ.Component) {
+    <!DOCTYPE html>
+    <html lang="en">
+        <head>
+            <meta charset="UTF-8" />
+            <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+            <title>{ title }</title>
+            <link rel="preload" href="fonts/Inter-400.ttf" as="font" type="font/ttf" crossorigin />
+            <link rel="preload" href="fonts/Inter-500.ttf" as="font" type="font/ttf" crossorigin />
+            <link rel="preload" href="fonts/Inter-600.ttf" as="font" type="font/ttf" crossorigin />
+            <link rel="preload" href="fonts/Inter-700.ttf" as="font" type="font/ttf" crossorigin />
+            <link rel="stylesheet" href="styles.css" />
+        </head>
+        <body class="is-loading">
+            @body
+            <script>
+                (function () {
+                    function removeLoadingClass() {
+                        document.body.classList.remove('is-loading');
+                    }
+                    if (document.readyState === 'loading') {
+                        document.addEventListener('DOMContentLoaded', removeLoadingClass, { once: true });
+                    } else {
+                        removeLoadingClass();
+                    }
+                    function injectHTMX() {
+                        if (document.documentElement.dataset.htmxLoaded) return;
+                        document.documentElement.dataset.htmxLoaded = 'true';
+                        var script = document.createElement('script');
+                        script.src = 'https://cdn.jsdelivr.net/npm/htmx.org@2.0.7/dist/htmx.min.js';
+                        script.integrity = 'sha384-ZBXiYtYQ6hJ2Y0ZNoYuI+Nq5MqWBr+chMrS/RkXpNzQCApHEhOt2aY8EJgqwHLkJ';
+                        script.crossOrigin = 'anonymous';
+                        document.head.appendChild(script);
+                    }
+                    if ('requestIdleCallback' in window) {
+                        requestIdleCallback(injectHTMX);
+                    } else {
+                        window.addEventListener('load', injectHTMX, { once: true });
+                    }
+                })();
+            </script>
+        </body>
+    </html>
+}
+
+templ LandingPage() {
+    @Layout("RevProject Portal", LandingContent())
+}
+
+templ LandingContent() {
+    <main>
+        <section class="hero">
+            <span class="hero-kicker">Revenue Operations Platform</span>
+            <h1>Bring companies, customers, products, and bundles together.</h1>
+            <p>
+                RevProject orchestrates your revenue workflow with a single contract command center.
+                Track fulfillment, manage performance obligations, and align finance and GTM teams without duct tape spreadsheets.
+            </p>
+            <ul>
+                <li>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M20 6L9 17l-5-5" />
+                    </svg>
+                    Contract-centric workspace with real-time status changes.
+                </li>
+                <li>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M3 6h18M3 12h12M3 18h6" />
+                    </svg>
+                    Coordinated updates flow through HTMX-powered UI fragments.
+                </li>
+                <li>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M12 20l9-5-9-5-9 5 9 5z" />
+                        <path d="M12 12l9-5-9-5-9 5 9 5z" />
+                    </svg>
+                    Secure JWT-backed sessions across admin and operating teams.
+                </li>
+            </ul>
+        </section>
+
+        <section class="card highlight-card">
+            <header>
+                <h2>Power your revenue teams</h2>
+                <p class="card-subtitle">
+                    Spin up RevProject, connect your contracts, and invite operators when you are ready.
+                </p>
+            </header>
+
+            <dl class="capability-metrics">
+                <div>
+                    <dt>Contracts managed</dt>
+                    <dd>Instant visibility into performance obligations per customer.</dd>
+                </div>
+                <div>
+                    <dt>Roles aligned</dt>
+                    <dd>Owners, operators, and admins stay in sync with fine-grained permissions.</dd>
+                </div>
+                <div>
+                    <dt>Admin tooling</dt>
+                    <dd>Reset data, review audit logs, and seed demo-tenants without touching SQL.</dd>
+                </div>
+            </dl>
+        </section>
+
+        <section class="card login-cta">
+            <h2>Ready to put RevProject to work?</h2>
+            <p>
+                Secure sign-in routes you straight to the operational console. Bring your company
+                ID and team credentials to keep your revenue process connected.
+            </p>
+            <div class="cta-actions">
+                <a class="primary-button" href="/login">Go to login</a>
+                <p>
+                    Need access? <a href="/request-access" class="form-link">Request a company workspace</a> and we will provision a sandbox for you.
+                </p>
+            </div>
+        </section>
+
+        <section class="feature-grid" aria-labelledby="platform-feature-heading">
+            <header>
+                <h2 id="platform-feature-heading">Built for RevOps orchestration</h2>
+                <p>Every capability maps directly to the APIs already shipping in this codebase.</p>
+            </header>
+            <ul>
+                for _, item := range platformCapabilities {
+                    <li>
+                        <h3>{ item.Title }</h3>
+                        <p>{ item.Description }</p>
+                        <button
+                            class="ghost-button"
+                            hx-get="/docs/capabilities"
+                            hx-vals="js:{ focus: this.dataset.focus }"
+                            data-focus={ item.Title }
+                            hx-target="#capability-details"
+                            hx-trigger="click"
+                        >
+                            View API surface
+                        </button>
+                    </li>
+                }
+            </ul>
+        </section>
+
+        <section id="capability-details" class="capability-details" aria-live="polite">
+            <!-- HTMX responses with deeper capability docs land here. -->
+        </section>
+    </main>
+}

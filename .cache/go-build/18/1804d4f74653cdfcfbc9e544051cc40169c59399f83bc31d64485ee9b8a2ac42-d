@@ -1,0 +1,9 @@
+./bundles.sql.go
+./companies.sql.go
+./contracts.sql.go
+./customers.sql.go
+./db.go
+./models.go
+./performance_obligations.sql.go
+./products.sql.go
+./users.sql.go

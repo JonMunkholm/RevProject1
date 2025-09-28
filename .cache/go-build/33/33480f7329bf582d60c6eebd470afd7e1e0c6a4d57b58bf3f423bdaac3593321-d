@@ -1,0 +1,4 @@
+./cmd.go
+./eventhandler.go
+./fatalerror.go
+./main.go

@@ -1,0 +1,5 @@
+./docheader.go
+./docheaderparser.go
+./pkgloader.go
+./pkgtraverser.go
+./templdoclazyloader.go

@@ -3,7 +3,10 @@ package application
 import (
 	"net/http"
 
+	appviews "github.com/JonMunkholm/RevProject1/app"
+	"github.com/JonMunkholm/RevProject1/internal/auth"
 	"github.com/JonMunkholm/RevProject1/internal/handler"
+	"github.com/a-h/templ"
 	"github.com/go-chi/chi"
 	"github.com/go-chi/chi/middleware"
 )
@@ -13,18 +16,64 @@ func (a *App) loadRoutes() {
 
 	r.Use(middleware.Logger)
 
-	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("Root is being served"))
+	serveAppAssets(r)
+
+	// Public landing + login flow
+	r.Group(func(r chi.Router) {
+		r.Get("/", func(w http.ResponseWriter, r *http.Request) {
+			a.render(w, r, appviews.LandingPage())
+		})
+
+		r.Route("/login", a.loadLogin)
 	})
 
-	r.Route("/companies", a.loadCompanyRoutes)
+	// Authenticated application + API surface
+	r.Group(func(r chi.Router) {
+		// TODO: add authentication middleware when available (e.g. JWT/session guard)
 
-	r.Route("/admin", a.loadAdminRoutes)
+		r.Route("/app", func(r chi.Router) {
+			// TODO: register authenticated HTML routes (dashboard, settings, etc.)
+		})
+
+		r.Route("/api", func(r chi.Router) {
+			r.Route("/companies", a.loadCompanyRoutes)
+			r.Route("/admin", a.loadAdminRoutes)
+		})
+	})
 
 	a.router = r
 }
 
+func serveAppAssets(r chi.Router) {
+	static := http.FileServer(http.Dir("app"))
+	r.Handle("/styles.css", static)
+	r.Handle("/login.html", static)
+	r.Handle("/fonts/*", http.StripPrefix("/fonts/", http.FileServer(http.Dir("app/fonts"))))
+}
+
+func (a *App) render(w http.ResponseWriter, r *http.Request, component templ.Component) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := component.Render(r.Context(), w); err != nil {
+		http.Error(w, "Failed to render page", http.StatusInternalServerError)
+	}
+}
+
+
+
+func (a *APP) loadLogin(r chi.Router){
+
+	loginHandler := &auth.Login{
+		DB: a.db,
+		jwtSecret: a.jwtSecret,
+	}
+	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
+		a.render(w, r, appviews.LoginPage())
+	})
+
+	r.Post("/", loginHandler.SignIn)
+
+
+}
 func (a *App) loadCompanyRoutes(r chi.Router) {
 	//allows for additional routs to be added easier
 	//most all these endpoints will be moved to owner route

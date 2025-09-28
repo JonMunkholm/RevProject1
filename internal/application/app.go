@@ -16,12 +16,17 @@ import (
 type App struct {
 	router http.Handler
 	db     *database.Queries
+	jwtSecret	string
+	port	string
 }
 
 // Define app struct and load routes
 func New() *App {
 	app := &App{
 		db:     dbConnect(),
+		jwtSecret: setValEnv("JWT_SECRET"),
+		port: setValEnv("PORT"),
+
 	}
 
 	app.loadRoutes()
@@ -30,9 +35,9 @@ func New() *App {
 }
 
 // Start server on port, with graceful shutdown
-func (a *App) Start(ctx context.Context, port string) error {
+func (a *App) Start(ctx context.Context) error {
 	server := &http.Server{
-		Addr:    port,
+		Addr:    a.port,
 		Handler: a.router,
 	}
 
@@ -77,4 +82,13 @@ func dbConnect() *database.Queries {
 	}
 
 	return database.New(db)
+}
+
+func setValEnv(req string) string {
+	val := os.Getenv(req)
+	if val == "" {
+		log.Fatalf("%v must be set", req)
+	}
+
+	return val
 }

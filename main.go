@@ -11,8 +11,6 @@ import (
 )
 
 
-const port = ":8080"
-
 func main() {
 	godotenv.Load()
 
@@ -22,7 +20,7 @@ func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer cancel()
 
-	err := app.Start(ctx, port)
+	err := app.Start(ctx)
 	if err != nil {
 		fmt.Println("failed to start app:", err)
 	}
