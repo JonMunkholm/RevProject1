@@ -12,18 +12,20 @@ Table companies {
 
 Table users {
   ID uuid [pk, default: `gen_random_uuid()`]
-  User_Name citext [not null]
   Created_At timestamp [not null, default: `CURRENT_TIMESTAMP`]
   Updated_At timestamp [not null, default: `CURRENT_TIMESTAMP`]
   Company_ID uuid [not null]
+  Email citext [not null]
+  Password_Hash text [not null]
   Is_Active bool [not null, default: true]
 
   indexes {
-    (Company_ID, User_Name) [unique]
     (Company_ID)
+    Email [unique]
+    (Company_ID, Email)
   }
 
-  note: 'Name must be trimmed non-blank.'
+  note: 'Email must be non-blank, unique, and match basic address pattern.'
 }
 
 Table customers {
