@@ -2,9 +2,12 @@ package auth
 
 import (
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -15,22 +18,21 @@ import (
 )
 
 type JWTreq struct {
-	UserID   	uuid.UUID
-	CompanyID 	uuid.UUID
-	Role		string
+	UserID    uuid.UUID
+	CompanyID uuid.UUID
+	Role      string
 }
 
 type CustomClaims struct {
-    jwt.RegisteredClaims
+	jwt.RegisteredClaims
 	CompanyID string `json:"companyID"`
-    Role string `json:"role"`
+	Role      string `json:"role,omitempty"`
 }
 
 type TokenType string
 
 const (
 	TokenTypeAccess TokenType = "revProject-1-User"
-	minutes int = 15
 )
 
 var ErrNoAuthHeaderIncluded = errors.New("no auth header included in request")
@@ -47,57 +49,53 @@ func CheckPasswordHash(password, hash string) error {
 	return bcrypt.CompareHashAndPassword([]byte(hash), []byte(password))
 }
 
-func MakeJWT(
-	req JWTreq,
-	tokenSecret string,
-) (string, error) {
+func MakeJWT(req JWTreq, tokenSecret string, expiresIn time.Duration) (string, error) {
 	signingKey := []byte(tokenSecret)
 
 	claims := CustomClaims{
-    RegisteredClaims: jwt.RegisteredClaims{
-        Issuer:    string(TokenTypeAccess),
-		IssuedAt:  jwt.NewNumericDate(time.Now().UTC()),
-		ExpiresAt: jwt.NewNumericDate(time.Now().UTC().Add(time.Minute * time.Duration(minutes))),
-		Subject:   req.UserID.String(),
-    },
+		RegisteredClaims: jwt.RegisteredClaims{
+			Issuer:    string(TokenTypeAccess),
+			IssuedAt:  jwt.NewNumericDate(time.Now().UTC()),
+			ExpiresAt: jwt.NewNumericDate(time.Now().UTC().Add(expiresIn)),
+			Subject:   req.UserID.String(),
+		},
 		CompanyID: req.CompanyID.String(),
-		Role: req.Role,
+		Role:      req.Role,
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-
 	return token.SignedString(signingKey)
 }
 
-func ValidateJWT(tokenString, tokenSecret string) (uuid.UUID, error) {
-	claimsStruct := jwt.RegisteredClaims{}
+func ValidateJWT(tokenString, tokenSecret string) (CustomClaims, error) {
+	claims := CustomClaims{}
+
 	token, err := jwt.ParseWithClaims(
 		tokenString,
-		&claimsStruct,
+		&claims,
 		func(token *jwt.Token) (interface{}, error) { return []byte(tokenSecret), nil },
 	)
 	if err != nil {
-		return uuid.Nil, err
+		return CustomClaims{}, err
 	}
 
-	userIDString, err := token.Claims.GetSubject()
-	if err != nil {
-		return uuid.Nil, err
+	if !token.Valid {
+		return CustomClaims{}, errors.New("invalid token")
 	}
 
-	issuer, err := token.Claims.GetIssuer()
+	issuer, err := claims.GetIssuer()
 	if err != nil {
-		return uuid.Nil, err
+		return CustomClaims{}, err
 	}
 	if issuer != string(TokenTypeAccess) {
-		return uuid.Nil, errors.New("invalid issuer")
+		return CustomClaims{}, errors.New("invalid issuer")
 	}
 
-	id, err := uuid.Parse(userIDString)
-	if err != nil {
-		return uuid.Nil, fmt.Errorf("invalid user ID: %w", err)
+	if _, err := uuid.Parse(claims.Subject); err != nil {
+		return CustomClaims{}, fmt.Errorf("invalid subject id: %w", err)
 	}
-	return id, nil
+
+	return claims, nil
 }
 
 func GetBearerToken(headers http.Header) (string, error) {
@@ -105,21 +103,26 @@ func GetBearerToken(headers http.Header) (string, error) {
 	if authHeader == "" {
 		return "", ErrNoAuthHeaderIncluded
 	}
-	splitAuth := strings.Split(authHeader, " ")
-	if len(splitAuth) < 2 || splitAuth[0] != "Bearer" {
+
+	parts := strings.Fields(authHeader)
+	if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") {
 		return "", errors.New("malformed authorization header")
 	}
 
-	return splitAuth[1], nil
+	return parts[1], nil
 }
 
 func MakeRefreshToken() (string, error) {
 	token := make([]byte, 32)
-	_, err := rand.Read(token)
-	if err != nil {
+	if _, err := rand.Read(token); err != nil {
 		return "", err
 	}
 	return hex.EncodeToString(token), nil
+}
+
+func HashString(value string) ([]byte, error) {
+	sum := sha256.Sum256([]byte(value))
+	return sum[:], nil
 }
 
 func GetAPIKey(headers http.Header) (string, error) {
@@ -127,10 +130,44 @@ func GetAPIKey(headers http.Header) (string, error) {
 	if authHeader == "" {
 		return "", ErrNoAuthHeaderIncluded
 	}
-	splitAuth := strings.Split(authHeader, " ")
-	if len(splitAuth) < 2 || splitAuth[0] != "ApiKey" {
+
+	parts := strings.Fields(authHeader)
+	if len(parts) != 2 || !strings.EqualFold(parts[0], "ApiKey") {
 		return "", errors.New("malformed authorization header")
 	}
 
-	return splitAuth[1], nil
+	return parts[1], nil
+}
+
+
+
+
+
+
+
+
+
+func RespondWithError(w http.ResponseWriter, code int, msg string, err error) {
+	if err != nil {
+		log.Println(err)
+	}
+	if code > 499 {
+		log.Printf("Responding with 5XX error: %s", msg)
+	}
+	RespondWithJSON(w, code, struct {
+		Error string `json:"error"`
+	}{Error: msg})
+}
+
+func RespondWithJSON(w http.ResponseWriter, code int, payload interface{}) {
+	dat, err := json.Marshal(payload)
+	if err != nil {
+		log.Printf("failed to encode response: %v", err)
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(code)
+	w.Write(dat)
 }

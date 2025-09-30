@@ -108,10 +108,11 @@ type RefreshToken struct {
 }
 
 type User struct {
-	ID        uuid.UUID
-	UserName  string
-	CreatedAt time.Time
-	UpdatedAt time.Time
-	CompanyID uuid.UUID
-	IsActive  bool
+	ID           uuid.UUID
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
+	CompanyID    uuid.UUID
+	Email        string
+	PasswordHash string
+	IsActive     bool
 }

@@ -16,7 +16,7 @@
         <header>
           <h1>Sign in to continue</h1>
           <p class="card-subtitle">
-            Use your company credentials to access RevProject. Sessions persist securely with HTTP-only cookies.
+            Use your account email and password to access RevProject. Sessions persist securely with HTTP-only cookies.
           </p>
         </header>
 
@@ -27,18 +27,6 @@
           hx-indicator="#login-indicator"
           hx-vals="js:{ timezoneOffset: new Date().getTimezoneOffset() }"
         >
-          <label>
-            Company name
-            <input
-              type="text"
-              name="companyName"
-              class="input-field"
-              autocomplete="organization"
-              required
-              placeholder="Acme Corporation"
-            />
-          </label>
-
           <label>
             Email address
             <input
@@ -87,7 +75,7 @@
 
         <div class="alt-actions">
           <span>Just exploring?</span>
-          <a href="/request-access">Request company access</a>
+          <a href="/register">Create your workspace</a>
         </div>
       </section>
     </main>

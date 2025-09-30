@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/JonMunkholm/RevProject1/internal/auth"
 	"github.com/JonMunkholm/RevProject1/internal/database"
 	"github.com/go-chi/chi"
 	"github.com/google/uuid"
@@ -19,12 +20,14 @@ type Company struct {
 
 type createCompanyRequest struct {
 	CompanyName string `json:"CompanyName"`
-	UserName    string `json:"UserName"`
+	Email       string `json:"email"`
+	Password    string `json:"password"`
 }
 
 type createCompanyArgs struct {
 	CompanyName string
-	UserName    string
+	Email       string
+	Password    string
 }
 
 type setActiveRequest struct {
@@ -38,7 +41,7 @@ type updateCompanyRequest struct {
 
 type createCompanyResponse struct {
 	Company database.Company `json:"company"`
-	User    database.User    `json:"user"`
+	User    userResponse     `json:"user"`
 }
 
 func (c *Company) Create(w http.ResponseWriter, r *http.Request) {
@@ -52,19 +55,26 @@ func (c *Company) Create(w http.ResponseWriter, r *http.Request) {
 		func() createCompanyRequest { return createCompanyRequest{} },
 		func(req createCompanyRequest) (createCompanyArgs, error) {
 			companyName := strings.TrimSpace(req.CompanyName)
-			userName := strings.TrimSpace(req.UserName)
+			email := strings.TrimSpace(req.Email)
 
 			switch {
 			case companyName == "":
 				return createCompanyArgs{}, errors.New("CompanyName is required")
-			case userName == "":
-				return createCompanyArgs{}, errors.New("UserName is required")
-			default:
-				return createCompanyArgs{
-					CompanyName: companyName,
-					UserName:    userName,
-				}, nil
+			case email == "":
+				return createCompanyArgs{}, errors.New("email is required")
+			case len(req.Password) < 8:
+				return createCompanyArgs{}, errors.New("password must be at least 8 characters")
 			}
+
+			if !isValidEmail(email) {
+				return createCompanyArgs{}, errors.New("invalid email format")
+			}
+
+			return createCompanyArgs{
+				CompanyName: companyName,
+				Email:       email,
+				Password:    req.Password,
+			}, nil
 		},
 		func(ctx context.Context, params createCompanyArgs) (createCompanyResponse, error) {
 			company, err := c.DB.CreateCompany(ctx, params.CompanyName)
@@ -72,9 +82,15 @@ func (c *Company) Create(w http.ResponseWriter, r *http.Request) {
 				return createCompanyResponse{}, err
 			}
 
+			hashed, err := auth.HashPassword(params.Password)
+			if err != nil {
+				return createCompanyResponse{}, err
+			}
+
 			user, err := c.DB.CreateUser(ctx, database.CreateUserParams{
-				UserName:  params.UserName,
-				CompanyID: company.ID,
+				CompanyID:    company.ID,
+				Email:        params.Email,
+				PasswordHash: hashed,
 			})
 			if err != nil {
 				return createCompanyResponse{}, err
@@ -82,7 +98,7 @@ func (c *Company) Create(w http.ResponseWriter, r *http.Request) {
 
 			return createCompanyResponse{
 				Company: company,
-				User:    user,
+				User:    newUserResponse(user),
 			}, nil
 		},
 		http.StatusCreated,

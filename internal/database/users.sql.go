@@ -12,28 +12,31 @@ import (
 )
 
 const createUser = `-- name: CreateUser :one
-INSERT INTO users (User_Name, Company_ID)
+INSERT INTO users (Company_ID, Email, Password_Hash)
 VALUES (
     $1,
-    $2
+    $2,
+    $3
 )
-RETURNING id, user_name, created_at, updated_at, company_id, is_active
+RETURNING id, created_at, updated_at, company_id, email, password_hash, is_active
 `
 
 type CreateUserParams struct {
-	UserName  string
-	CompanyID uuid.UUID
+	CompanyID    uuid.UUID
+	Email        string
+	PasswordHash string
 }
 
 func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, error) {
-	row := q.db.QueryRowContext(ctx, createUser, arg.UserName, arg.CompanyID)
+	row := q.db.QueryRowContext(ctx, createUser, arg.CompanyID, arg.Email, arg.PasswordHash)
 	var i User
 	err := row.Scan(
 		&i.ID,
-		&i.UserName,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.CompanyID,
+		&i.Email,
+		&i.PasswordHash,
 		&i.IsActive,
 	)
 	return i, err
@@ -56,7 +59,7 @@ func (q *Queries) DeleteUser(ctx context.Context, arg DeleteUserParams) error {
 }
 
 const getActiveUsersCompany = `-- name: GetActiveUsersCompany :many
-SELECT id, user_name, created_at, updated_at, company_id, is_active FROM users
+SELECT id, created_at, updated_at, company_id, email, password_hash, is_active FROM users
 WHERE Company_ID = $1
 AND Is_Active = TRUE
 `
@@ -72,10 +75,11 @@ func (q *Queries) GetActiveUsersCompany(ctx context.Context, companyID uuid.UUID
 		var i User
 		if err := rows.Scan(
 			&i.ID,
-			&i.UserName,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.CompanyID,
+			&i.Email,
+			&i.PasswordHash,
 			&i.IsActive,
 		); err != nil {
 			return nil, err
@@ -92,7 +96,7 @@ func (q *Queries) GetActiveUsersCompany(ctx context.Context, companyID uuid.UUID
 }
 
 const getAllUsers = `-- name: GetAllUsers :many
-SELECT id, user_name, created_at, updated_at, company_id, is_active FROM users
+SELECT id, created_at, updated_at, company_id, email, password_hash, is_active FROM users
 `
 
 func (q *Queries) GetAllUsers(ctx context.Context) ([]User, error) {
@@ -106,10 +110,11 @@ func (q *Queries) GetAllUsers(ctx context.Context) ([]User, error) {
 		var i User
 		if err := rows.Scan(
 			&i.ID,
-			&i.UserName,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.CompanyID,
+			&i.Email,
+			&i.PasswordHash,
 			&i.IsActive,
 		); err != nil {
 			return nil, err
@@ -126,7 +131,7 @@ func (q *Queries) GetAllUsers(ctx context.Context) ([]User, error) {
 }
 
 const getAllUsersCompany = `-- name: GetAllUsersCompany :many
-SELECT id, user_name, created_at, updated_at, company_id, is_active FROM users
+SELECT id, created_at, updated_at, company_id, email, password_hash, is_active FROM users
 WHERE Company_ID = $1
 `
 
@@ -141,10 +146,11 @@ func (q *Queries) GetAllUsersCompany(ctx context.Context, companyID uuid.UUID) (
 		var i User
 		if err := rows.Scan(
 			&i.ID,
-			&i.UserName,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.CompanyID,
+			&i.Email,
+			&i.PasswordHash,
 			&i.IsActive,
 		); err != nil {
 			return nil, err
@@ -161,7 +167,7 @@ func (q *Queries) GetAllUsersCompany(ctx context.Context, companyID uuid.UUID) (
 }
 
 const getUser = `-- name: GetUser :one
-SELECT id, user_name, created_at, updated_at, company_id, is_active FROM users
+SELECT id, created_at, updated_at, company_id, email, password_hash, is_active FROM users
 WHERE ID = $1
 AND Company_ID = $2
 `
@@ -176,35 +182,77 @@ func (q *Queries) GetUser(ctx context.Context, arg GetUserParams) (User, error) 
 	var i User
 	err := row.Scan(
 		&i.ID,
-		&i.UserName,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.CompanyID,
+		&i.Email,
+		&i.PasswordHash,
 		&i.IsActive,
 	)
 	return i, err
 }
 
-const getUserByName = `-- name: GetUserByName :one
-SELECT id, user_name, created_at, updated_at, company_id, is_active FROM users
+const getUserByEmail = `-- name: GetUserByEmail :one
+SELECT id, created_at, updated_at, company_id, email, password_hash, is_active FROM users
 WHERE Company_ID = $1
-AND User_Name = $2
+AND Email = $2
 `
 
-type GetUserByNameParams struct {
+type GetUserByEmailParams struct {
 	CompanyID uuid.UUID
-	UserName  string
+	Email     string
 }
 
-func (q *Queries) GetUserByName(ctx context.Context, arg GetUserByNameParams) (User, error) {
-	row := q.db.QueryRowContext(ctx, getUserByName, arg.CompanyID, arg.UserName)
+func (q *Queries) GetUserByEmail(ctx context.Context, arg GetUserByEmailParams) (User, error) {
+	row := q.db.QueryRowContext(ctx, getUserByEmail, arg.CompanyID, arg.Email)
 	var i User
 	err := row.Scan(
 		&i.ID,
-		&i.UserName,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.CompanyID,
+		&i.Email,
+		&i.PasswordHash,
+		&i.IsActive,
+	)
+	return i, err
+}
+
+const getUserByIDGlobal = `-- name: GetUserByIDGlobal :one
+SELECT id, created_at, updated_at, company_id, email, password_hash, is_active FROM users
+WHERE ID = $1
+`
+
+func (q *Queries) GetUserByIDGlobal(ctx context.Context, id uuid.UUID) (User, error) {
+	row := q.db.QueryRowContext(ctx, getUserByIDGlobal, id)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.CompanyID,
+		&i.Email,
+		&i.PasswordHash,
+		&i.IsActive,
+	)
+	return i, err
+}
+
+const getUserByEmailGlobal = `-- name: GetUserByEmailGlobal :one
+SELECT id, created_at, updated_at, company_id, email, password_hash, is_active FROM users
+WHERE Email = $1
+`
+
+func (q *Queries) GetUserByEmailGlobal(ctx context.Context, email string) (User, error) {
+	row := q.db.QueryRowContext(ctx, getUserByEmailGlobal, email)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.CompanyID,
+		&i.Email,
+		&i.PasswordHash,
 		&i.IsActive,
 	)
 	return i, err
@@ -240,15 +288,15 @@ func (q *Queries) SetUserActiveStatus(ctx context.Context, arg SetUserActiveStat
 const updateUser = `-- name: UpdateUser :one
 UPDATE users
 SET
-    User_Name = $1,
+    Email = $1,
     Is_Active = $2
 WHERE ID = $3
 AND Company_ID = $4
-RETURNING id, user_name, created_at, updated_at, company_id, is_active
+RETURNING id, created_at, updated_at, company_id, email, password_hash, is_active
 `
 
 type UpdateUserParams struct {
-	UserName  string
+	Email     string
 	IsActive  bool
 	ID        uuid.UUID
 	CompanyID uuid.UUID
@@ -256,7 +304,7 @@ type UpdateUserParams struct {
 
 func (q *Queries) UpdateUser(ctx context.Context, arg UpdateUserParams) (User, error) {
 	row := q.db.QueryRowContext(ctx, updateUser,
-		arg.UserName,
+		arg.Email,
 		arg.IsActive,
 		arg.ID,
 		arg.CompanyID,
@@ -264,10 +312,11 @@ func (q *Queries) UpdateUser(ctx context.Context, arg UpdateUserParams) (User, e
 	var i User
 	err := row.Scan(
 		&i.ID,
-		&i.UserName,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.CompanyID,
+		&i.Email,
+		&i.PasswordHash,
 		&i.IsActive,
 	)
 	return i, err

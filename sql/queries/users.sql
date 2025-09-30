@@ -1,8 +1,9 @@
 -- name: CreateUser :one
-INSERT INTO users (User_Name, Company_ID)
+INSERT INTO users (Company_ID, Email, Password_Hash)
 VALUES (
     $1,
-    $2
+    $2,
+    $3
 )
 RETURNING *;
 
@@ -20,7 +21,7 @@ AND Company_ID = $3;
 -- name: UpdateUser :one
 UPDATE users
 SET
-    User_Name = $1,
+    Email = $1,
     Is_Active = $2
 WHERE ID = $3
 AND Company_ID = $4
@@ -31,10 +32,18 @@ SELECT * FROM users
 WHERE ID = $1
 AND Company_ID = $2;
 
--- name: GetUserByName :one
+-- name: GetUserByEmail :one
 SELECT * FROM users
 WHERE Company_ID = $1
-AND User_Name = $2;
+AND Email = $2;
+
+-- name: GetUserByIDGlobal :one
+SELECT * FROM users
+WHERE ID = $1;
+
+-- name: GetUserByEmailGlobal :one
+SELECT * FROM users
+WHERE Email = $1;
 
 -- name: GetAllUsersCompany :many
 SELECT * FROM users

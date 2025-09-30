@@ -25,14 +25,32 @@ func (a *App) loadRoutes() {
 		})
 
 		r.Route("/login", a.loadLogin)
+		r.Route("/register", a.loadRegister)
+		r.Route("/auth", a.loadAuthRoutes)
 	})
 
 	// Authenticated application + API surface
 	r.Group(func(r chi.Router) {
-		// TODO: add authentication middleware when available (e.g. JWT/session guard)
+		r.Use(auth.JWTMiddleware(a.jwtSecret))
 
 		r.Route("/app", func(r chi.Router) {
-			// TODO: register authenticated HTML routes (dashboard, settings, etc.)
+			serveAppShell := func(w http.ResponseWriter, r *http.Request) {
+				http.ServeFile(w, r, "app/index.html")
+			}
+
+			for _, route := range []string{
+				"/",
+				"/dashboard",
+				"/settings",
+				"/companies",
+				"/customers",
+				"/contracts",
+				"/products",
+				"/performance-obligations",
+				"/bundles",
+			} {
+				r.Get(route, serveAppShell)
+			}
 		})
 
 		r.Route("/api", func(r chi.Router) {
@@ -58,21 +76,27 @@ func (a *App) render(w http.ResponseWriter, r *http.Request, component templ.Com
 	}
 }
 
-
-
-func (a *APP) loadLogin(r chi.Router){
-
-	loginHandler := &auth.Login{
-		DB: a.db,
-		jwtSecret: a.jwtSecret,
-	}
+func (a *App) loadLogin(r chi.Router) {
 	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
 		a.render(w, r, appviews.LoginPage())
 	})
+}
 
-	r.Post("/", loginHandler.SignIn)
+func (a *App) loadRegister(r chi.Router) {
+	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
+		http.ServeFile(w, r, "app/register.html")
+	})
+}
 
+func (a *App) loadAuthRoutes(r chi.Router) {
+	loginHandler := &auth.Login{
+		DB:        a.db,
+		JWTSecret: a.jwtSecret,
+	}
 
+	r.Post("/login", loginHandler.SignIn)
+	r.Post("/register", loginHandler.Register)
+	r.Post("/refresh", loginHandler.Refresh)
 }
 func (a *App) loadCompanyRoutes(r chi.Router) {
 	//allows for additional routs to be added easier
@@ -107,7 +131,7 @@ func (a *App) loadUserRoutes(r chi.Router) {
 	r.Post("/", userHandler.Create)
 	r.Get("/", userHandler.List)
 	r.Get("/active", userHandler.GetActive)
-	r.Get("/by-name/{name}", userHandler.GetByName)
+	r.Get("/by-email/{email}", userHandler.GetByEmail)
 
 	r.Get("/{userID}", userHandler.GetById)
 	r.Put("/{userID}", userHandler.UpdateById)

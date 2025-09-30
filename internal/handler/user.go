@@ -3,10 +3,12 @@ package handler
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strings"
 	"time"
 
+	"github.com/JonMunkholm/RevProject1/internal/auth"
 	"github.com/JonMunkholm/RevProject1/internal/database"
 	"github.com/go-chi/chi"
 	"github.com/google/uuid"
@@ -17,11 +19,12 @@ type User struct {
 }
 
 type createUserRequest struct {
-	UserName string `json:"UserName"`
+	Email    string `json:"email"`
+	Password string `json:"password"`
 }
 
 type updateUserRequest struct {
-	UserName string `json:"UserName"`
+	Email    string `json:"email"`
 	IsActive bool   `json:"IsActive"`
 }
 
@@ -42,13 +45,36 @@ func (u *User) Create(w http.ResponseWriter, r *http.Request) {
 		r,
 		func() createUserRequest { return createUserRequest{} },
 		func(req createUserRequest) (database.CreateUserParams, error) {
+			email := strings.TrimSpace(req.Email)
+			if email == "" {
+				return database.CreateUserParams{}, errors.New("email is required")
+			}
+
+			if !isValidEmail(email) {
+				return database.CreateUserParams{}, errors.New("invalid email format")
+			}
+
+			if len(req.Password) < 8 {
+				return database.CreateUserParams{}, errors.New("password must be at least 8 characters")
+			}
+
+			hashed, err := auth.HashPassword(req.Password)
+			if err != nil {
+				return database.CreateUserParams{}, err
+			}
+
 			return database.CreateUserParams{
-				UserName:  req.UserName,
-				CompanyID: companyID,
+				CompanyID:    companyID,
+				Email:        email,
+				PasswordHash: hashed,
 			}, nil
 		},
-		func(ctx context.Context, params database.CreateUserParams) (database.User, error) {
-			return u.DB.CreateUser(ctx, params)
+		func(ctx context.Context, params database.CreateUserParams) (userResponse, error) {
+			created, err := u.DB.CreateUser(ctx, params)
+			if err != nil {
+				return userResponse{}, err
+			}
+			return newUserResponse(created), nil
 		},
 		http.StatusCreated,
 	)
@@ -65,7 +91,7 @@ func (u *User) ListAll(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	res, err := json.Marshal(users)
+	res, err := json.Marshal(newUserList(users))
 	if err != nil {
 		RespondWithError(w, http.StatusInternalServerError, "Failed to marshal response:", err)
 		return
@@ -95,8 +121,12 @@ func (u *User) List(w http.ResponseWriter, r *http.Request) {
 		func(req interface{}) (uuid.UUID, error) {
 			return companyID, nil
 		},
-		func(ctx context.Context, param uuid.UUID) ([]database.User, error) {
-			return u.DB.GetAllUsersCompany(ctx, param)
+		func(ctx context.Context, param uuid.UUID) ([]userResponse, error) {
+			users, err := u.DB.GetAllUsersCompany(ctx, param)
+			if err != nil {
+				return nil, err
+			}
+			return newUserList(users), nil
 		},
 		http.StatusOK,
 	)
@@ -131,15 +161,19 @@ func (u *User) GetById(w http.ResponseWriter, r *http.Request) {
 				CompanyID: companyID,
 			}, nil
 		},
-		func(ctx context.Context, param database.GetUserParams) (database.User, error) {
-			return u.DB.GetUser(ctx, param)
+		func(ctx context.Context, param database.GetUserParams) (userResponse, error) {
+			user, err := u.DB.GetUser(ctx, param)
+			if err != nil {
+				return userResponse{}, err
+			}
+			return newUserResponse(user), nil
 		},
 		http.StatusOK,
 	)
 
 }
 
-func (u *User) GetByName(w http.ResponseWriter, r *http.Request) {
+func (u *User) GetByEmail(w http.ResponseWriter, r *http.Request) {
 
 	companyID, err := uuid.Parse(chi.URLParam(r, "companyID"))
 	if err != nil {
@@ -147,7 +181,7 @@ func (u *User) GetByName(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userName := strings.TrimSpace(chi.URLParam(r, "name"))
+	email := strings.TrimSpace(chi.URLParam(r, "email"))
 
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
@@ -157,14 +191,18 @@ func (u *User) GetByName(w http.ResponseWriter, r *http.Request) {
 		w,
 		r,
 		func() interface{} { return struct{}{} },
-		func(req interface{}) (database.GetUserByNameParams, error) {
-			return database.GetUserByNameParams{
+		func(req interface{}) (database.GetUserByEmailParams, error) {
+			return database.GetUserByEmailParams{
 				CompanyID: companyID,
-				UserName:  userName,
+				Email:     email,
 			}, nil
 		},
-		func(ctx context.Context, param database.GetUserByNameParams) (database.User, error) {
-			return u.DB.GetUserByName(ctx, param)
+		func(ctx context.Context, param database.GetUserByEmailParams) (userResponse, error) {
+			user, err := u.DB.GetUserByEmail(ctx, param)
+			if err != nil {
+				return userResponse{}, err
+			}
+			return newUserResponse(user), nil
 		},
 		http.StatusOK,
 	)
@@ -193,15 +231,28 @@ func (u *User) UpdateById(w http.ResponseWriter, r *http.Request) {
 		r,
 		func() updateUserRequest { return updateUserRequest{} },
 		func(req updateUserRequest) (database.UpdateUserParams, error) {
+			email := strings.TrimSpace(req.Email)
+			if email == "" {
+				return database.UpdateUserParams{}, errors.New("email is required")
+			}
+
+			if !isValidEmail(email) {
+				return database.UpdateUserParams{}, errors.New("invalid email format")
+			}
+
 			return database.UpdateUserParams{
-				UserName:  req.UserName,
+				Email:     email,
 				IsActive:  req.IsActive,
 				ID:        userID,
 				CompanyID: companyID,
 			}, nil
 		},
-		func(ctx context.Context, param database.UpdateUserParams) (database.User, error) {
-			return u.DB.UpdateUser(ctx, param)
+		func(ctx context.Context, param database.UpdateUserParams) (userResponse, error) {
+			updated, err := u.DB.UpdateUser(ctx, param)
+			if err != nil {
+				return userResponse{}, err
+			}
+			return newUserResponse(updated), nil
 		},
 		http.StatusOK,
 	)
@@ -244,6 +295,11 @@ func (u *User) DeleteById(w http.ResponseWriter, r *http.Request) {
 
 }
 
+func isValidEmail(email string) bool {
+	at := strings.IndexRune(email, '@')
+	return at > 0 && at < len(email)-1 && strings.IndexRune(email[at+1:], '.') >= 0
+}
+
 func (u *User) ResetTable(w http.ResponseWriter, r *http.Request) {
 
 	ctx, cancel := context.WithTimeout(r.Context(), time.Second*10)
@@ -277,8 +333,12 @@ func (u *User) GetActive(w http.ResponseWriter, r *http.Request) {
 		func(req interface{}) (uuid.UUID, error) {
 			return companyID, nil
 		},
-		func(ctx context.Context, param uuid.UUID) ([]database.User, error) {
-			return u.DB.GetActiveUsersCompany(ctx, param)
+		func(ctx context.Context, param uuid.UUID) ([]userResponse, error) {
+			users, err := u.DB.GetActiveUsersCompany(ctx, param)
+			if err != nil {
+				return nil, err
+			}
+			return newUserList(users), nil
 		},
 		http.StatusOK,
 	)
