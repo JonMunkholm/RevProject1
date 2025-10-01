@@ -1,0 +1,88 @@
+package app
+
+import (
+	"context"
+	"io"
+
+	"github.com/a-h/templ"
+)
+
+func LoginPage() templ.Component {
+	return LayoutWithAssets("Log in • RevProject", nil, nil, templ.ComponentFunc(renderLoginContent))
+}
+
+func renderLoginContent(ctx context.Context, w io.Writer) error {
+	_, err := io.WriteString(w, loginHTML)
+	return err
+}
+
+const loginHTML = `
+<main class="login-layout">
+    <section class="card" id="auth-card">
+        <header>
+            <h1>Sign in to continue</h1>
+            <p class="card-subtitle">
+                Use your account email and password to access RevProject. Sessions persist securely with HTTP-only cookies.
+            </p>
+        </header>
+
+        <form
+            hx-post="/auth/login"
+            hx-target="#login-message"
+            hx-swap="innerHTML"
+            hx-indicator="#login-indicator"
+            hx-vals="js:{ timezoneOffset: new Date().getTimezoneOffset() }"
+        >
+            <label>
+                Email address
+                <input
+                    type="email"
+                    name="email"
+                    class="input-field"
+                    autocomplete="email"
+                    required
+                    placeholder="team@company.com"
+                />
+            </label>
+
+            <label>
+                Password
+                <input
+                    type="password"
+                    name="password"
+                    class="input-field"
+                    autocomplete="current-password"
+                    required
+                    minlength="8"
+                    placeholder="Enter your password"
+                />
+            </label>
+
+            <div class="form-row">
+                <label class="remember-option">
+                    <input type="checkbox" name="remember" value="true" />
+                    Remember me
+                </label>
+                <a href="/forgot-password" class="form-link">Forgot password?</a>
+            </div>
+
+            <button type="submit">Log in</button>
+
+            <div id="login-indicator" class="htmx-indicator" aria-live="polite" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="9" stroke-opacity="0.2" />
+                    <path d="M21 12a9 9 0 0 1-9 9" />
+                </svg>
+                Authenticating…
+            </div>
+
+            <p id="login-message" class="message" aria-live="polite"></p>
+        </form>
+
+        <div class="alt-actions">
+            <span>Just exploring?</span>
+            <a href="/register">Create your workspace</a>
+        </div>
+    </section>
+</main>
+`

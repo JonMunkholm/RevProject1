@@ -14,19 +14,18 @@ import (
 )
 
 type App struct {
-	router http.Handler
-	db     *database.Queries
-	jwtSecret	string
-	port	string
+	router    http.Handler
+	db        *database.Queries
+	jwtSecret string
+	port      string
 }
 
 // Define app struct and load routes
 func New() *App {
 	app := &App{
-		db:     dbConnect(),
+		db:        dbConnect(),
 		jwtSecret: setValEnv("JWT_SECRET"),
-		port: setValEnv("PORT"),
-
+		port:      setValEnv("PORT"),
 	}
 
 	app.loadRoutes()
@@ -56,7 +55,7 @@ func (a *App) Start(ctx context.Context) error {
 	case <-ctx.Done():
 		log.Println("Shutting down server...")
 
-		timeout, cancel := context.WithTimeout(context.Background(), time.Second * 10)
+		timeout, cancel := context.WithTimeout(context.Background(), time.Second*10)
 		defer cancel()
 
 		return server.Shutdown(timeout)

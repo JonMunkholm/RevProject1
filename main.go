@@ -10,7 +10,6 @@ import (
 	"github.com/joho/godotenv"
 )
 
-
 func main() {
 	godotenv.Load()
 
@@ -25,7 +24,6 @@ func main() {
 		fmt.Println("failed to start app:", err)
 	}
 
-
 	// 		r.Use(middleware.RequestID)
 	// 		r.Use(middleware.RealIP)
 
@@ -33,6 +31,5 @@ func main() {
 	// 	})
 
 	// })
-
 
 }

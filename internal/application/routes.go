@@ -5,6 +5,7 @@ import (
 
 	appviews "github.com/JonMunkholm/RevProject1/app"
 	"github.com/JonMunkholm/RevProject1/internal/auth"
+	"github.com/JonMunkholm/RevProject1/internal/database"
 	"github.com/JonMunkholm/RevProject1/internal/handler"
 	"github.com/a-h/templ"
 	"github.com/go-chi/chi"
@@ -34,26 +35,16 @@ func (a *App) loadRoutes() {
 		r.Use(auth.JWTMiddleware(a.jwtSecret))
 
 		r.Route("/app", func(r chi.Router) {
-			serveAppShell := func(w http.ResponseWriter, r *http.Request) {
-				http.ServeFile(w, r, "app/index.html")
-			}
-
-			for _, route := range []string{
-				"/",
-				"/dashboard",
-				"/settings",
-				"/companies",
-				"/customers",
-				"/contracts",
-				"/products",
-				"/performance-obligations",
-				"/bundles",
-			} {
-				r.Get(route, serveAppShell)
-			}
+			r.Get("/", a.dashboardPage("dashboard"))
+			r.Get("/dashboard", a.dashboardPage("dashboard"))
+			r.Get("/review", a.dashboardPage("review"))
+			r.Get("/customers", a.dashboardPage("customers"))
+			r.Get("/products", a.dashboardPage("products"))
 		})
 
 		r.Route("/api", func(r chi.Router) {
+			r.Route("/dashboard", a.loadDashboardRoutes)
+			r.Route("/review", a.loadReviewRoutes)
 			r.Route("/companies", a.loadCompanyRoutes)
 			r.Route("/admin", a.loadAdminRoutes)
 		})
@@ -64,7 +55,12 @@ func (a *App) loadRoutes() {
 
 func serveAppAssets(r chi.Router) {
 	static := http.FileServer(http.Dir("app"))
+	r.Handle("/fonts.css", static)
 	r.Handle("/styles.css", static)
+	r.Handle("/dashboard.css", static)
+	r.Handle("/dashboard.js", static)
+	r.Handle("/register.js", static)
+	r.Handle("/app.js", static)
 	r.Handle("/login.html", static)
 	r.Handle("/fonts/*", http.StripPrefix("/fonts/", http.FileServer(http.Dir("app/fonts"))))
 }
@@ -84,7 +80,7 @@ func (a *App) loadLogin(r chi.Router) {
 
 func (a *App) loadRegister(r chi.Router) {
 	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
-		http.ServeFile(w, r, "app/register.html")
+		a.render(w, r, appviews.RegisterPage())
 	})
 }
 
@@ -97,6 +93,33 @@ func (a *App) loadAuthRoutes(r chi.Router) {
 	r.Post("/login", loginHandler.SignIn)
 	r.Post("/register", loginHandler.Register)
 	r.Post("/refresh", loginHandler.Refresh)
+	r.Post("/logout", loginHandler.Logout)
+}
+
+func (a *App) dashboardPage(active string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var component templ.Component
+		switch active {
+		case "review":
+			component = appviews.ReviewPage(active)
+		default:
+			component = appviews.DashboardPage(active)
+		}
+		a.render(w, r, component)
+	}
+}
+
+func (a *App) loadDashboardRoutes(r chi.Router) {
+	bindDashboardSummary(a.db, r)
+}
+
+func (a *App) loadReviewRoutes(r chi.Router) {
+	bindDashboardSummary(a.db, r)
+}
+
+func bindDashboardSummary(db *database.Queries, r chi.Router) {
+	h := &handler.Dashboard{DB: db}
+	r.Get("/summary", h.Summary)
 }
 func (a *App) loadCompanyRoutes(r chi.Router) {
 	//allows for additional routs to be added easier

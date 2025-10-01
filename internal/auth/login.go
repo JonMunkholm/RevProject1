@@ -74,7 +74,13 @@ func (l *Login) SignIn(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	RespondWithJSON(w, http.StatusOK, map[string]string{"message": "login successful"})
+	if isHTMXRequest(r) {
+		w.Header().Set("HX-Redirect", "/app/dashboard")
+		RespondWithJSON(w, http.StatusOK, map[string]string{"message": "login successful"})
+		return
+	}
+
+	http.Redirect(w, r, "/app/dashboard", http.StatusSeeOther)
 }
 
 func (l *Login) Register(w http.ResponseWriter, r *http.Request) {
@@ -135,7 +141,13 @@ func (l *Login) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	RespondWithJSON(w, http.StatusCreated, map[string]string{"message": "🎉 Registration complete! You're signed in and ready to go."})
+	if isHTMXRequest(r) {
+		w.Header().Set("HX-Redirect", "/app/dashboard")
+		RespondWithJSON(w, http.StatusCreated, map[string]string{"message": "🎉 Registration complete! You're signed in and ready to go."})
+		return
+	}
+
+	http.Redirect(w, r, "/app/dashboard", http.StatusSeeOther)
 }
 
 func (l *Login) issueSession(w http.ResponseWriter, r *http.Request, user database.User) error {
@@ -273,6 +285,48 @@ func (l *Login) Refresh(w http.ResponseWriter, r *http.Request) {
 	RespondWithJSON(w, http.StatusOK, map[string]string{"message": "session refreshed"})
 }
 
+func (l *Login) Logout(w http.ResponseWriter, r *http.Request) {
+	secureCookie := r.TLS != nil
+	clearCookie := func(name, path string) {
+		http.SetCookie(w, &http.Cookie{
+			Name:     name,
+			Value:    "",
+			Path:     path,
+			HttpOnly: true,
+			Secure:   secureCookie,
+			SameSite: http.SameSiteStrictMode,
+			Expires:  time.Unix(0, 0),
+			MaxAge:   -1,
+		})
+	}
+
+	if l != nil && l.DB != nil {
+		if refreshCookie, err := r.Cookie("refresh_token"); err == nil && refreshCookie.Value != "" {
+			hashed, hashErr := HashString(refreshCookie.Value)
+			if hashErr != nil {
+				log.Printf("failed to hash refresh token during logout: %v", hashErr)
+			} else {
+				token, lookupErr := l.DB.GetRefreshTokenByHash(r.Context(), database.GetRefreshTokenByHashParams{
+					TokenHash:      hashed,
+					IncludeRevoked: true,
+				})
+				if lookupErr != nil {
+					if !errors.Is(lookupErr, sql.ErrNoRows) {
+						log.Printf("failed to load refresh token for logout: %v", lookupErr)
+					}
+				} else {
+					l.revokeRefreshToken(r.Context(), token.ID)
+				}
+			}
+		}
+	}
+
+	clearCookie("access_token", "/")
+	clearCookie("refresh_token", refreshCookiePath)
+
+	RespondWithJSON(w, http.StatusOK, map[string]string{"message": "logged out"})
+}
+
 func (l *Login) loadActiveUser(ctx context.Context, lookup func(context.Context) (database.User, error)) (database.User, error) {
 	user, err := lookup(ctx)
 	if err != nil {
@@ -398,6 +452,13 @@ func isValidEmail(email string) bool {
 		return false
 	}
 	return strings.Contains(email[at+1:], ".")
+}
+
+func isHTMXRequest(r *http.Request) bool {
+	if r == nil {
+		return false
+	}
+	return strings.EqualFold(r.Header.Get("HX-Request"), "true")
 }
 
 func clientInet(r *http.Request) pqtype.Inet {

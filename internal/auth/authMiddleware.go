@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strings"
 
 	"github.com/google/uuid"
 )
@@ -39,25 +40,25 @@ func JWTMiddleware(secret string) func(http.Handler) http.Handler {
 
 			token, err := tokenFromRequest(r)
 			if err != nil {
-				RespondWithError(w, http.StatusUnauthorized, "authentication required", err)
+				handleUnauthorized(w, r, http.StatusUnauthorized, "authentication required", err)
 				return
 			}
 
 			claims, err := ValidateJWT(token, secret)
 			if err != nil {
-				RespondWithError(w, http.StatusUnauthorized, "invalid or expired token", err)
+				handleUnauthorized(w, r, http.StatusUnauthorized, "invalid or expired token", err)
 				return
 			}
 
 			userID, err := uuid.Parse(claims.Subject)
 			if err != nil {
-				RespondWithError(w, http.StatusUnauthorized, "invalid token subject", err)
+				handleUnauthorized(w, r, http.StatusUnauthorized, "invalid token subject", err)
 				return
 			}
 
 			companyID, err := uuid.Parse(claims.CompanyID)
 			if err != nil {
-				RespondWithError(w, http.StatusUnauthorized, "invalid token company", err)
+				handleUnauthorized(w, r, http.StatusUnauthorized, "invalid token company", err)
 				return
 			}
 
@@ -87,4 +88,38 @@ func tokenFromRequest(r *http.Request) (string, error) {
 		return "", err
 	}
 	return token, nil
+}
+
+func handleUnauthorized(w http.ResponseWriter, r *http.Request, status int, msg string, err error) {
+	if shouldRedirectToLogin(r) {
+		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		return
+	}
+
+	RespondWithError(w, status, msg, err)
+}
+
+func shouldRedirectToLogin(r *http.Request) bool {
+	if r == nil {
+		return false
+	}
+
+	if strings.EqualFold(r.Header.Get("HX-Request"), "true") {
+		return false
+	}
+
+	if strings.EqualFold(r.Header.Get("X-Requested-With"), "XMLHttpRequest") {
+		return false
+	}
+
+	accept := r.Header.Get("Accept")
+	if strings.Contains(accept, "text/html") {
+		return true
+	}
+
+	if accept == "" && r.Method == http.MethodGet {
+		return true
+	}
+
+	return false
 }

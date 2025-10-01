@@ -139,14 +139,6 @@ func GetAPIKey(headers http.Header) (string, error) {
 	return parts[1], nil
 }
 
-
-
-
-
-
-
-
-
 func RespondWithError(w http.ResponseWriter, code int, msg string, err error) {
 	if err != nil {
 		log.Println(err)

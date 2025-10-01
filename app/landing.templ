@@ -1,76 +1,7 @@
 package app
 
-type capability struct {
-    Title       string
-    Description string
-}
-
-var platformCapabilities = []capability{
-    {
-        Title:       "Model companies and hierarchies",
-        Description: "Register new companies, set active status, and invite operators with role-aware access controls.",
-    },
-    {
-        Title:       "Map customers and contracts",
-        Description: "Connect customers to contracts, attach supporting performance obligations, and see fulfillment status in one view.",
-    },
-    {
-        Title:       "Bundle products with intent",
-        Description: "Compose products into bundles, reuse obligations, and reuse pricing packages across revenue workflows.",
-    },
-    {
-        Title:       "Operational tooling ready",
-        Description: "Reset seed data, audit recent imports, and manage administrative tasks without leaving the dashboard.",
-    },
-}
-
-templ Layout(title string, body templ.Component) {
-    <!DOCTYPE html>
-    <html lang="en">
-        <head>
-            <meta charset="UTF-8" />
-            <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-            <title>{ title }</title>
-            <link rel="preload" href="fonts/Inter-400.ttf" as="font" type="font/ttf" crossorigin />
-            <link rel="preload" href="fonts/Inter-500.ttf" as="font" type="font/ttf" crossorigin />
-            <link rel="preload" href="fonts/Inter-600.ttf" as="font" type="font/ttf" crossorigin />
-            <link rel="preload" href="fonts/Inter-700.ttf" as="font" type="font/ttf" crossorigin />
-            <link rel="stylesheet" href="styles.css" />
-        </head>
-        <body class="is-loading">
-            @body
-            <script>
-                (function () {
-                    function removeLoadingClass() {
-                        document.body.classList.remove('is-loading');
-                    }
-                    if (document.readyState === 'loading') {
-                        document.addEventListener('DOMContentLoaded', removeLoadingClass, { once: true });
-                    } else {
-                        removeLoadingClass();
-                    }
-                    function injectHTMX() {
-                        if (document.documentElement.dataset.htmxLoaded) return;
-                        document.documentElement.dataset.htmxLoaded = 'true';
-                        var script = document.createElement('script');
-                        script.src = 'https://cdn.jsdelivr.net/npm/htmx.org@2.0.7/dist/htmx.min.js';
-                        script.integrity = 'sha384-ZBXiYtYQ6hJ2Y0ZNoYuI+Nq5MqWBr+chMrS/RkXpNzQCApHEhOt2aY8EJgqwHLkJ';
-                        script.crossOrigin = 'anonymous';
-                        document.head.appendChild(script);
-                    }
-                    if ('requestIdleCallback' in window) {
-                        requestIdleCallback(injectHTMX);
-                    } else {
-                        window.addEventListener('load', injectHTMX, { once: true });
-                    }
-                })();
-            </script>
-        </body>
-    </html>
-}
-
 templ LandingPage() {
-    @Layout("RevProject Portal", LandingContent())
+    @BaseLayout("RevProject Portal", nil, nil, LandingContent())
 }
 
 templ LandingContent() {
@@ -149,22 +80,58 @@ templ LandingContent() {
                 <p>Every capability maps directly to the APIs already shipping in this codebase.</p>
             </header>
             <ul>
-                for _, item := range platformCapabilities {
-                    <li>
-                        <h3>{ item.Title }</h3>
-                        <p>{ item.Description }</p>
-                        <button
-                            class="ghost-button"
-                            hx-get="/docs/capabilities"
-                            hx-vals="js:{ focus: this.dataset.focus }"
-                            data-focus={ item.Title }
-                            hx-target="#capability-details"
-                            hx-trigger="click"
-                        >
-                            View API surface
-                        </button>
-                    </li>
-                }
+                <li>
+                    <h3>Model companies and hierarchies</h3>
+                    <p>Register new companies, set active status, and invite operators with role-aware access controls.</p>
+                    <button
+                        class="ghost-button"
+                        hx-get="/docs/capabilities"
+                        data-focus="Model companies and hierarchies"
+                        hx-target="#capability-details"
+                        hx-trigger="click"
+                    >
+                        View API surface
+                    </button>
+                </li>
+                <li>
+                    <h3>Map customers and contracts</h3>
+                    <p>Connect customers to contracts, attach supporting performance obligations, and see fulfillment status in one view.</p>
+                    <button
+                        class="ghost-button"
+                        hx-get="/docs/capabilities"
+                        data-focus="Map customers and contracts"
+                        hx-target="#capability-details"
+                        hx-trigger="click"
+                    >
+                        View API surface
+                    </button>
+                </li>
+                <li>
+                    <h3>Bundle products with intent</h3>
+                    <p>Compose products into bundles, reuse obligations, and reuse pricing packages across revenue workflows.</p>
+                    <button
+                        class="ghost-button"
+                        hx-get="/docs/capabilities"
+                        data-focus="Bundle products with intent"
+                        hx-target="#capability-details"
+                        hx-trigger="click"
+                    >
+                        View API surface
+                    </button>
+                </li>
+                <li>
+                    <h3>Operational tooling ready</h3>
+                    <p>Reset seed data, audit recent imports, and manage administrative tasks without leaving the dashboard.</p>
+                    <button
+                        class="ghost-button"
+                        hx-get="/docs/capabilities"
+                        data-focus="Operational tooling ready"
+                        hx-target="#capability-details"
+                        hx-trigger="click"
+                    >
+                        View API surface
+                    </button>
+                </li>
             </ul>
         </section>
 

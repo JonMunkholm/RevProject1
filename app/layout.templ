@@ -1,0 +1,28 @@
+package app
+
+templ BaseLayout(title string, styles []string, scripts []string, body templ.Component) {
+    <!DOCTYPE html>
+    <html lang="en">
+        <head>
+            <meta charset="UTF-8" />
+            <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+            <title>{ title }</title>
+            <link rel="preload" href="/fonts/Inter-400.ttf" as="font" type="font/ttf" crossorigin />
+            <link rel="preload" href="/fonts/Inter-500.ttf" as="font" type="font/ttf" crossorigin />
+            <link rel="preload" href="/fonts/Inter-600.ttf" as="font" type="font/ttf" crossorigin />
+            <link rel="preload" href="/fonts/Inter-700.ttf" as="font" type="font/ttf" crossorigin />
+            <link rel="stylesheet" href="/fonts.css" />
+            <link rel="stylesheet" href="/styles.css" />
+            { for _, href := range styles }
+                <link rel="stylesheet" href={ href } />
+            { end }
+        </head>
+        <body class="is-loading">
+            @body
+            <script src="/app.js" defer></script>
+            { for _, src := range scripts }
+                <script src={ src } defer></script>
+            { end }
+        </body>
+    </html>
+}
