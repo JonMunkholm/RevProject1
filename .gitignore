@@ -1,3 +1,4 @@
 .env
-.yaml
+sqlc.yaml
+Taskfile.yaml
 .cache/
