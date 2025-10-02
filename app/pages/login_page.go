@@ -1,14 +1,19 @@
-package app
+package pages
 
 import (
 	"context"
 	"io"
 
+	"github.com/JonMunkholm/RevProject1/app/layout"
 	"github.com/a-h/templ"
 )
 
 func LoginPage() templ.Component {
-	return LayoutWithAssets("Log in • RevProject", nil, nil, templ.ComponentFunc(renderLoginContent))
+	return layout.LayoutWithAssets(
+		"Log in • RevProject",
+		[]string{"/assets/css/auth.css", "/assets/css/login.css"},
+		templ.ComponentFunc(renderLoginContent),
+	)
 }
 
 func renderLoginContent(ctx context.Context, w io.Writer) error {

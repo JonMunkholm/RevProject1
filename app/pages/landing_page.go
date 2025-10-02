@@ -1,14 +1,19 @@
-package app
+package pages
 
 import (
 	"context"
 	"io"
 
+	"github.com/JonMunkholm/RevProject1/app/layout"
 	"github.com/a-h/templ"
 )
 
 func LandingPage() templ.Component {
-	return LayoutWithAssets("RevProject Portal", nil, nil, templ.ComponentFunc(renderLandingContent))
+	return layout.LayoutWithAssets(
+		"RevProject Portal",
+		[]string{"/assets/css/landing.css"},
+		templ.ComponentFunc(renderLandingContent),
+	)
 }
 
 func renderLandingContent(ctx context.Context, w io.Writer) error {
@@ -123,8 +128,6 @@ const landingHTML = `
         </ul>
     </section>
 
-    <section id="capability-details" class="capability-details" aria-live="polite">
-        <!-- HTMX responses with deeper capability docs land here. -->
-    </section>
+	<section id="capability-details" class="capability-details" aria-live="polite"></section>
 </main>
 `

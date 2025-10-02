@@ -1,7 +1,9 @@
-package app
+package pages
+
+import "github.com/JonMunkholm/RevProject1/app/layout"
 
 templ LandingPage() {
-    @BaseLayout("RevProject Portal", nil, nil, LandingContent())
+    @layout.BaseLayout("RevProject Portal", []string{"/assets/css/landing.css"}, LandingContent())
 }
 
 templ LandingContent() {
@@ -135,8 +137,6 @@ templ LandingContent() {
             </ul>
         </section>
 
-        <section id="capability-details" class="capability-details" aria-live="polite">
-            <!-- HTMX responses with deeper capability docs land here. -->
-        </section>
+        <section id="capability-details" class="capability-details" aria-live="polite"></section>
     </main>
 }

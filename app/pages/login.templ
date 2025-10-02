@@ -1,7 +1,9 @@
-package app
+package pages
+
+import "github.com/JonMunkholm/RevProject1/app/layout"
 
 templ LoginPage() {
-    @BaseLayout("Log in • RevProject", nil, nil, LoginContent())
+    @layout.BaseLayout("Log in • RevProject", []string{"/assets/css/auth.css", "/assets/css/login.css"}, LoginContent())
 }
 
 templ LoginContent() {

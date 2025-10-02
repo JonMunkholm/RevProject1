@@ -1,0 +1,23 @@
+@import url("./auth.css");
+
+:root {
+    --auth-accent: #22d3ee;
+    --auth-accent-strong: #0891b2;
+}
+
+body {
+    background:
+        radial-gradient(circle at 16% -20%, rgba(45, 212, 191, 0.32), transparent 58%),
+        radial-gradient(circle at 84% -10%, rgba(8, 145, 178, 0.28), transparent 56%),
+        var(--auth-bg);
+}
+
+button[type="submit"] {
+    background: linear-gradient(120deg, var(--auth-accent-strong), #22d3ee);
+    box-shadow: 0 22px 46px -24px rgba(34, 211, 238, 0.6);
+}
+
+button[type="submit"]:hover,
+button[type="submit"]:focus {
+    box-shadow: 0 26px 52px -24px rgba(34, 211, 238, 0.7);
+}

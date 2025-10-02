@@ -1,0 +1,291 @@
+:root {
+    --review-shell-bg: rgba(15, 23, 42, 0.86);
+    --review-panel-bg: rgba(30, 41, 59, 0.9);
+    --review-panel-border: rgba(148, 163, 184, 0.16);
+    --review-text: #f8fafc;
+    --review-muted: #a1acc5;
+    --review-accent: #38bdf8;
+    --review-accent-strong: #0ea5e9;
+    --review-highlight: rgba(56, 189, 248, 0.12);
+}
+
+.review-shell {
+    background: linear-gradient(155deg, rgba(15, 23, 42, 0.88), rgba(7, 13, 26, 0.96));
+    color: var(--review-text);
+    padding: 2.8em 3.25em 3.5em;
+    display: grid;
+    gap: 2.5em;
+}
+
+.review-header {
+    display: grid;
+    grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+    gap: 2em;
+    align-items: start;
+}
+
+.review-kicker {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4em;
+    padding: 0.4em 0.85em;
+    border-radius: 999em;
+    background: rgba(14, 165, 233, 0.16);
+    color: var(--review-accent);
+    text-transform: uppercase;
+    font-size: 0.75em;
+    letter-spacing: 0.12em;
+    font-weight: 600;
+}
+
+.review-header__intro h1 {
+    margin: 0.6em 0 0;
+    font-size: clamp(2.2em, 3.5vw, 2.75em);
+    letter-spacing: -0.01em;
+}
+
+.review-header__intro p {
+    margin: 0.75em 0 0;
+    color: var(--review-muted);
+    max-width: 48ch;
+    line-height: 1.6;
+}
+
+.review-header__guide {
+    background: var(--review-panel-bg);
+    border: 1px solid var(--review-panel-border);
+    border-radius: 1.25em;
+    padding: 1.5em 1.75em;
+    box-shadow: 0 24px 48px -32px rgba(8, 15, 30, 0.6);
+}
+
+.review-header__guide h2 {
+    margin: 0 0 0.9em;
+    font-size: 1.15em;
+}
+
+.review-header__guide ul {
+    margin: 0;
+    padding-left: 1.25em;
+    display: grid;
+    gap: 0.75em;
+    color: var(--review-muted);
+    line-height: 1.55;
+}
+
+.review-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr);
+    gap: 2.25em;
+}
+
+.review-column {
+    display: grid;
+    gap: 1.75em;
+}
+
+.review-search,
+.review-chat,
+.review-feed,
+.review-report {
+    background: var(--review-panel-bg);
+    border: 1px solid var(--review-panel-border);
+    border-radius: 1.25em;
+    padding: 1.75em;
+    box-shadow: 0 24px 48px -30px rgba(8, 15, 30, 0.55);
+    display: grid;
+    gap: 1em;
+}
+
+.review-search__control {
+    position: relative;
+}
+
+.review-search__control input {
+    width: 100%;
+    padding: 0.85em 1.1em;
+    border-radius: 1em;
+    border: 1px solid rgba(148, 163, 184, 0.25);
+    background: rgba(15, 23, 42, 0.7);
+    color: var(--review-text);
+    font-size: 1em;
+    transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.review-search__control input:focus {
+    outline: none;
+    border-color: var(--review-accent);
+    box-shadow: 0 0 0 0.2em rgba(56, 189, 248, 0.2);
+}
+
+.review-search__results {
+    position: absolute;
+    top: calc(100% + 0.4em);
+    left: 0;
+    right: 0;
+    max-height: 16em;
+    overflow-y: auto;
+    background: rgba(10, 18, 32, 0.95);
+    border-radius: 0.9em;
+    border: 1px solid rgba(148, 163, 184, 0.16);
+    box-shadow: 0 20px 40px -24px rgba(8, 15, 30, 0.65);
+    display: none;
+    z-index: 20;
+}
+
+.review-search__results .review-search-result {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2em;
+    padding: 0.75em 1em;
+    cursor: pointer;
+    color: var(--review-text);
+}
+
+.review-search__results .review-search-result:hover,
+.review-search__results .review-search-result:focus {
+    background: var(--review-highlight);
+}
+
+.review-search__results:not(:empty) {
+    display: block;
+}
+
+.review-chat__form {
+    display: grid;
+    gap: 1em;
+}
+
+.review-chat__form textarea {
+    resize: vertical;
+    min-height: 7em;
+    border-radius: 1em;
+    border: 1px solid rgba(148, 163, 184, 0.25);
+    background: rgba(15, 23, 42, 0.7);
+    color: var(--review-text);
+    padding: 0.9em 1.1em;
+    font-size: 1em;
+    font-family: inherit;
+}
+
+.review-chat__form textarea:focus {
+    outline: none;
+    border-color: var(--review-accent);
+    box-shadow: 0 0 0 0.2em rgba(56, 189, 248, 0.15);
+}
+
+.review-chat__controls {
+    display: flex;
+    align-items: center;
+    gap: 1.25em;
+    flex-wrap: wrap;
+}
+
+.file-upload {
+    position: relative;
+    overflow: hidden;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.65em;
+    padding: 0.7em 1.1em;
+    border-radius: 0.9em;
+    background: rgba(56, 189, 248, 0.16);
+    color: var(--review-accent);
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.file-upload input[type="file"] {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    cursor: pointer;
+}
+
+.review-chat__controls button {
+    padding: 0.75em 1.6em;
+    border-radius: 0.95em;
+    border: none;
+    font-weight: 600;
+    color: #0b1120;
+    background: linear-gradient(120deg, var(--review-accent-strong), #38bdf8);
+    cursor: pointer;
+    box-shadow: 0 18px 32px -20px rgba(56, 189, 248, 0.7);
+    transition: transform 120ms ease, box-shadow 120ms ease;
+}
+
+.review-chat__controls button:hover,
+.review-chat__controls button:focus {
+    transform: translateY(-1px);
+    box-shadow: 0 22px 38px -20px rgba(56, 189, 248, 0.75);
+}
+
+.review-hint {
+    margin: 0;
+    color: rgba(148, 163, 184, 0.65);
+    font-size: 0.85em;
+}
+
+.review-chat__form .htmx-indicator {
+    display: none;
+    align-items: center;
+    gap: 0.6em;
+    padding: 0.7em 1em;
+    border-radius: 0.85em;
+    background: rgba(56, 189, 248, 0.15);
+    color: var(--review-text);
+    font-size: 0.9em;
+}
+
+.review-chat__form.htmx-request .htmx-indicator {
+    display: inline-flex;
+}
+
+.review-feed,
+.review-report {
+    gap: 1.25em;
+}
+
+.review-placeholder {
+    display: grid;
+    gap: 0.5em;
+    color: var(--review-muted);
+    text-align: left;
+}
+
+.review-report h2,
+.review-feed h2 {
+    margin: 0;
+    font-size: 1.3em;
+}
+
+@media (max-width: 1200px) {
+    .review-grid {
+        grid-template-columns: 100%;
+    }
+
+    .review-shell {
+        padding: 2.4em 2.25em 3em;
+    }
+}
+
+@media (max-width: 768px) {
+    .review-header {
+        grid-template-columns: 100%;
+    }
+
+    .review-shell {
+        padding: 2em 1.5em 2.5em;
+    }
+
+    .review-chat__controls {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .file-upload,
+    .review-chat__controls button {
+        width: 100%;
+        justify-self: stretch;
+    }
+}

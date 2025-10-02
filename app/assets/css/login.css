@@ -1,0 +1,12 @@
+@import url("./auth.css");
+
+body {
+    background:
+        radial-gradient(circle at 20% -18%, rgba(96, 165, 250, 0.38), transparent 60%),
+        radial-gradient(circle at 78% -12%, rgba(37, 99, 235, 0.28), transparent 55%),
+        var(--auth-bg);
+}
+
+#auth-card {
+    box-shadow: 0 26px 72px -34px rgba(15, 38, 80, 0.7);
+}

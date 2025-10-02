@@ -3,7 +3,7 @@ package application
 import (
 	"net/http"
 
-	appviews "github.com/JonMunkholm/RevProject1/app"
+	"github.com/JonMunkholm/RevProject1/app/pages"
 	"github.com/JonMunkholm/RevProject1/internal/auth"
 	"github.com/JonMunkholm/RevProject1/internal/database"
 	"github.com/JonMunkholm/RevProject1/internal/handler"
@@ -22,7 +22,7 @@ func (a *App) loadRoutes() {
 	// Public landing + login flow
 	r.Group(func(r chi.Router) {
 		r.Get("/", func(w http.ResponseWriter, r *http.Request) {
-			a.render(w, r, appviews.LandingPage())
+			a.render(w, r, pages.LandingPage())
 		})
 
 		r.Route("/login", a.loadLogin)
@@ -54,15 +54,20 @@ func (a *App) loadRoutes() {
 }
 
 func serveAppAssets(r chi.Router) {
-	static := http.FileServer(http.Dir("app"))
-	r.Handle("/fonts.css", static)
-	r.Handle("/styles.css", static)
-	r.Handle("/dashboard.css", static)
-	r.Handle("/dashboard.js", static)
-	r.Handle("/register.js", static)
-	r.Handle("/app.js", static)
-	r.Handle("/login.html", static)
-	r.Handle("/fonts/*", http.StripPrefix("/fonts/", http.FileServer(http.Dir("app/fonts"))))
+	r.Handle(
+		"/assets/*",
+		http.StripPrefix(
+			"/assets/",
+			http.FileServer(http.Dir("app/assets")),
+		),
+	)
+	r.Handle(
+		"/fonts/*",
+		http.StripPrefix(
+			"/fonts/",
+			http.FileServer(http.Dir("app/assets/fonts")),
+		),
+	)
 }
 
 func (a *App) render(w http.ResponseWriter, r *http.Request, component templ.Component) {
@@ -74,13 +79,13 @@ func (a *App) render(w http.ResponseWriter, r *http.Request, component templ.Com
 
 func (a *App) loadLogin(r chi.Router) {
 	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
-		a.render(w, r, appviews.LoginPage())
+		a.render(w, r, pages.LoginPage())
 	})
 }
 
 func (a *App) loadRegister(r chi.Router) {
 	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
-		a.render(w, r, appviews.RegisterPage())
+		a.render(w, r, pages.RegisterPage())
 	})
 }
 
@@ -101,9 +106,9 @@ func (a *App) dashboardPage(active string) http.HandlerFunc {
 		var component templ.Component
 		switch active {
 		case "review":
-			component = appviews.ReviewPage(active)
+			component = pages.ReviewPage(active)
 		default:
-			component = appviews.DashboardPage(active)
+			component = pages.DashboardPage(active)
 		}
 		a.render(w, r, component)
 	}

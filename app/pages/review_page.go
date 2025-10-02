@@ -1,0 +1,47 @@
+package pages
+
+import (
+	"context"
+	"io"
+
+	"github.com/JonMunkholm/RevProject1/app/layout"
+	"github.com/a-h/templ"
+)
+
+func ReviewPage(active string) templ.Component {
+	return layout.LayoutWithAssets(
+		"Review Workspace",
+		[]string{"/assets/css/dashboard.css", "/assets/css/review.css"},
+		reviewShell(active),
+	)
+}
+
+func reviewShell(active string) templ.Component {
+	return templ.ComponentFunc(func(ctx context.Context, w io.Writer) error {
+		if err := write(w, `<div class="dashboard-frame">`); err != nil {
+			return err
+		}
+		if err := dashboardSidebar(active).Render(ctx, w); err != nil {
+			return err
+		}
+		if err := reviewMain().Render(ctx, w); err != nil {
+			return err
+		}
+		return write(w, `</div>`)
+	})
+}
+
+func reviewMain() templ.Component {
+	return templ.ComponentFunc(func(ctx context.Context, w io.Writer) error {
+		if err := write(w, `<main class="review-shell">`); err != nil {
+			return err
+		}
+		if err := write(w, `<header class="review-header"><div class="review-header__intro"><span class="review-kicker">AI-assisted review</span><h1>Review workspace</h1><p>Combine uploaded documents with contextual prompts to generate compliance-ready summaries for your stakeholders.</p></div><div class="review-header__guide"><h2>Tips for better reports</h2><ul><li><strong>Be specific.</strong> Reference the contract, customer, or metric you want to inspect.</li><li><strong>Upload supporting evidence.</strong> Attach spreadsheets, PDFs, or CSV exports for deeper context.</li><li><strong>Define outcomes.</strong> Ask for highlights, risks, or next-actions to tailor the summary.</li></ul></div></header>`); err != nil {
+			return err
+		}
+		if err := write(w, `<section class="review-grid"><div class="review-column"><section class="review-search"><label for="review-customer" class="input-label">Customer</label><div class="review-search__control"><input id="review-customer" name="customer" type="search" placeholder="Search customer, contract, or ID" hx-get="/api/review/customers" hx-trigger="keyup changed delay:300ms" hx-target="#review-customer-results" hx-select=".review-search-result" autocomplete="off" /><div id="review-customer-results" class="review-search__results" role="listbox"></div></div><p class="review-hint">Start typing to filter the customer list. Select one to tailor the analysis.</p></section><section class="review-chat"><form id="review-form" class="review-chat__form" method="post" hx-post="/api/review/analyze" hx-target="#review-report" hx-indicator="#review-indicator" hx-encoding="multipart/form-data" hx-trigger="submit, keydown[key=='Enter' && !shiftKey] from:#review-prompt"><label for="review-prompt" class="input-label">Prompt</label><textarea id="review-prompt" name="prompt" rows="6" required placeholder="Ask, for example: Summarize performance obligations and flag revenue recognition risks."></textarea><div class="review-chat__controls"><label class="file-upload"><input type="file" name="attachment" /><span>Attach supporting file</span></label><button type="submit">Generate report</button></div><p class="review-hint">Press Enter to submit, Shift+Enter to add a new line.</p><div id="review-indicator" class="htmx-indicator">Compiling insights…</div></form></section><section class="review-feed" id="review-feed"><div class="review-placeholder"><h2>Conversation history</h2><p>Your recent prompts and generated insights will appear here.</p></div></section></div><section class="review-report" id="review-report"><div class="review-placeholder"><h2>Analysis report</h2><p>Run a prompt to generate a structured summary with key findings, open questions, and recommended actions.</p></div></section></section>`); err != nil {
+			return err
+		}
+		return write(w, `</main>`)
+	})
+}

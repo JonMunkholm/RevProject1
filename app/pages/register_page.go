@@ -1,14 +1,19 @@
-package app
+package pages
 
 import (
 	"context"
 	"io"
 
+	"github.com/JonMunkholm/RevProject1/app/layout"
 	"github.com/a-h/templ"
 )
 
 func RegisterPage() templ.Component {
-	return LayoutWithAssets("Create Your RevProject Workspace", nil, []string{"/register.js"}, templ.ComponentFunc(renderRegisterContent))
+	return layout.LayoutWithAssets(
+		"Create Your RevProject Workspace",
+		[]string{"/assets/css/auth.css", "/assets/css/register.css"},
+		templ.ComponentFunc(renderRegisterContent),
+	)
 }
 
 func renderRegisterContent(ctx context.Context, w io.Writer) error {

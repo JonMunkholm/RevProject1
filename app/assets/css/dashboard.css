@@ -1,0 +1,332 @@
+:root {
+    --dash-bg: #0b1120;
+    --dash-surface: rgba(15, 23, 42, 0.82);
+    --dash-border: rgba(148, 163, 184, 0.18);
+    --dash-highlight: rgba(59, 130, 246, 0.08);
+    --dash-text: #f8fafc;
+    --dash-muted: #94a3b8;
+    --dash-accent: #60a5fa;
+    --dash-accent-strong: #2563eb;
+    --dash-card: rgba(30, 41, 59, 0.85);
+    --dash-card-border: rgba(148, 163, 184, 0.14);
+}
+
+body {
+    margin: 0;
+    background:
+        radial-gradient(circle at 18% -10%, rgba(96, 165, 250, 0.24), transparent 60%),
+        radial-gradient(circle at 82% -12%, rgba(37, 99, 235, 0.22), transparent 58%),
+        var(--dash-bg);
+    color: var(--dash-text);
+    font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    min-height: 100vh;
+}
+
+.dashboard-frame {
+    display: grid;
+    grid-template-columns: 18.5rem minmax(0, 1fr);
+    min-height: 100vh;
+}
+
+.side-nav {
+    display: flex;
+    flex-direction: column;
+    padding: 1.75em 1.5em;
+    background: rgba(15, 23, 42, 0.92);
+    border-right: 1px solid var(--dash-border);
+    backdrop-filter: blur(16px);
+}
+
+.side-nav__brand {
+    display: flex;
+    align-items: center;
+    gap: 1em;
+    margin-bottom: 2.5em;
+}
+
+.side-nav__logo {
+    display: grid;
+    place-items: center;
+    width: 3em;
+    height: 3em;
+    background: var(--dash-accent-strong);
+    color: #fff;
+    border-radius: 0.9em;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+}
+
+.side-nav__titles {
+    display: grid;
+    gap: 0.3em;
+}
+
+.side-nav__name {
+    font-weight: 600;
+    letter-spacing: 0.02em;
+}
+
+.side-nav__tag {
+    font-size: 0.85em;
+    color: var(--dash-muted);
+}
+
+.side-nav__menu {
+    display: grid;
+    gap: 0.35em;
+    margin-bottom: auto;
+}
+
+.side-nav__link {
+    display: flex;
+    align-items: center;
+    gap: 0.85em;
+    padding: 0.8em 0.9em;
+    border-radius: 0.85em;
+    color: var(--dash-muted);
+    text-decoration: none;
+    transition: background 120ms ease, color 120ms ease;
+}
+
+.side-nav__link[aria-current="page"],
+.side-nav__link:hover,
+.side-nav__link:focus {
+    background: rgba(59, 130, 246, 0.18);
+    color: var(--dash-text);
+}
+
+.side-nav__link--button {
+    border: none;
+    background: transparent;
+    width: 100%;
+    cursor: pointer;
+    font: inherit;
+    text-align: left;
+}
+
+.side-nav__icon {
+    display: grid;
+    place-items: center;
+    width: 2.2em;
+    height: 2.2em;
+    border-radius: 0.7em;
+    background: rgba(148, 163, 184, 0.16);
+    color: var(--dash-text);
+    font-weight: 600;
+    font-size: 0.9em;
+}
+
+.side-nav__text {
+    font-size: 0.95em;
+    font-weight: 500;
+}
+
+.side-nav__footer {
+    display: grid;
+    gap: 0.6em;
+    margin-top: 2.2em;
+}
+
+.dashboard-shell {
+    padding: 2.5em 3.5em 3em;
+    display: grid;
+    gap: 2.5em;
+    background: linear-gradient(155deg, rgba(15, 23, 42, 0.82), rgba(8, 13, 26, 0.95));
+}
+
+.dashboard-header {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 1.5em;
+}
+
+.dashboard-heading h1 {
+    margin: 0;
+    font-size: clamp(2em, 3vw, 2.6em);
+    letter-spacing: -0.01em;
+}
+
+.dashboard-heading p {
+    margin: 0.5em 0 0;
+    color: var(--dash-muted);
+    max-width: 45ch;
+}
+
+.dashboard-actions {
+    display: grid;
+    gap: 0.75em;
+    justify-items: start;
+}
+
+.dashboard-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.6em;
+    padding: 0.65em 0.9em;
+    border-radius: 0.8em;
+    background: rgba(148, 163, 184, 0.16);
+    color: var(--dash-muted);
+    font-size: 0.9em;
+}
+
+.dashboard-actions button {
+    border: none;
+    border-radius: 0.85em;
+    padding: 0.75em 1.4em;
+    background: linear-gradient(120deg, var(--dash-accent-strong), rgba(96, 165, 250, 0.85));
+    color: #fff;
+    font-weight: 600;
+    cursor: pointer;
+    transition: transform 120ms ease, box-shadow 120ms ease;
+}
+
+.dashboard-actions button:hover,
+.dashboard-actions button:focus {
+    transform: translateY(-1px);
+    box-shadow: 0 18px 32px -20px rgba(59, 130, 246, 0.65);
+}
+
+.metrics-grid {
+    display: grid;
+    gap: 1.25em;
+    grid-template-columns: repeat(auto-fit, minmax(15.5rem, 1fr));
+}
+
+.metric-card {
+    padding: 1.5em;
+    border-radius: 1em;
+    background: var(--dash-card);
+    border: 1px solid var(--dash-card-border);
+    display: grid;
+    gap: 1.1em;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+.metric-card header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 1em;
+}
+
+.metric-label {
+    font-weight: 600;
+    font-size: 1em;
+}
+
+.metric-subvalue {
+    font-size: 0.85em;
+    color: var(--dash-muted);
+}
+
+.metric-value {
+    font-size: clamp(1.6em, 3vw, 2.3em);
+    font-weight: 700;
+    color: #fff;
+}
+
+.metric-note {
+    margin: 0;
+    color: var(--dash-muted);
+    line-height: 1.5;
+}
+
+.panel {
+    background: var(--dash-card);
+    border: 1px solid var(--dash-card-border);
+    border-radius: 1em;
+    display: grid;
+    gap: 1.25em;
+    padding: 1.75em;
+    box-shadow: 0 24px 48px -30px rgba(15, 23, 42, 0.55);
+}
+
+.panel-header {
+    display: flex;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 1em;
+}
+
+.panel-header h2 {
+    margin: 0;
+    font-size: 1.4em;
+}
+
+.panel-header p {
+    margin: 0.4em 0 0;
+    color: var(--dash-muted);
+}
+
+.panel-body {
+    overflow-x: auto;
+}
+
+.panel-body table {
+    width: 100%;
+    border-collapse: collapse;
+    min-width: 40rem;
+    color: var(--dash-muted);
+}
+
+.panel-body th,
+.panel-body td {
+    text-align: left;
+    padding: 0.75em 0.6em;
+    border-bottom: 1px solid rgba(148, 163, 184, 0.12);
+}
+
+.panel-body th {
+    font-size: 0.85em;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: rgba(148, 163, 184, 0.8);
+}
+
+.placeholder-row td {
+    color: rgba(148, 163, 184, 0.6);
+    text-align: center;
+    font-style: italic;
+}
+
+@media (max-width: 1024px) {
+    .dashboard-frame {
+        grid-template-columns: 16rem minmax(0, 1fr);
+    }
+
+    .dashboard-shell {
+        padding: 2em 2.25em 2.5em;
+    }
+}
+
+@media (max-width: 768px) {
+    .dashboard-frame {
+        grid-template-columns: 100%;
+    }
+
+    .side-nav {
+        position: sticky;
+        top: 0;
+        z-index: 10;
+        flex-direction: row;
+        align-items: center;
+        gap: 1.5em;
+        overflow-x: auto;
+        padding: 1em 1.5em;
+    }
+
+    .side-nav__brand {
+        margin: 0;
+    }
+
+    .side-nav__menu,
+    .side-nav__footer {
+        display: none;
+    }
+
+    .dashboard-shell {
+        padding: 2em 1.5em 2.5em;
+    }
+}
