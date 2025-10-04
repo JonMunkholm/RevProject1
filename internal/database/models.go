@@ -6,11 +6,81 @@ package database
 
 import (
 	"database/sql"
+	"encoding/json"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/sqlc-dev/pqtype"
 )
+
+type AiConversationMessage struct {
+	ID        uuid.UUID
+	SessionID uuid.UUID
+	Role      string
+	Content   string
+	Metadata  json.RawMessage
+	CreatedAt time.Time
+}
+
+type AiConversationSession struct {
+	ID         uuid.UUID
+	CompanyID  uuid.UUID
+	UserID     uuid.UUID
+	ProviderID string
+	Title      sql.NullString
+	Metadata   json.RawMessage
+	CreatedAt  time.Time
+	UpdatedAt  time.Time
+}
+
+type AiDocumentJob struct {
+	ID           uuid.UUID
+	CompanyID    uuid.UUID
+	UserID       uuid.UUID
+	ProviderID   string
+	Status       string
+	Request      json.RawMessage
+	Response     pqtype.NullRawMessage
+	ErrorMessage sql.NullString
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
+	CompletedAt  sql.NullTime
+}
+
+type AiProviderCredential struct {
+	ID               uuid.UUID
+	CompanyID        uuid.UUID
+	UserID           uuid.UUID
+	ProviderID       string
+	CredentialCipher []byte
+	CredentialHash   []byte
+	Metadata         json.RawMessage
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
+	LastUsedAt       sql.NullTime
+	RotatedAt        sql.NullTime
+}
+
+type AiToolInvocation struct {
+	ID           uuid.UUID
+	UserID       uuid.NullUUID
+	ProviderID   string
+	ToolName     string
+	Status       string
+	Request      pqtype.NullRawMessage
+	Response     pqtype.NullRawMessage
+	ErrorMessage sql.NullString
+	CreatedAt    time.Time
+}
+
+type AiUserPreference struct {
+	UserID     uuid.UUID
+	CompanyID  uuid.UUID
+	ProviderID string
+	Model      sql.NullString
+	Metadata   json.RawMessage
+	UpdatedAt  time.Time
+}
 
 type Bundle struct {
 	ID         uuid.UUID

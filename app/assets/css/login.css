@@ -2,11 +2,98 @@
 
 body {
     background:
-        radial-gradient(circle at 20% -18%, rgba(96, 165, 250, 0.38), transparent 60%),
-        radial-gradient(circle at 78% -12%, rgba(37, 99, 235, 0.28), transparent 55%),
-        var(--auth-bg);
+        radial-gradient(circle at 18% -10%, rgba(15, 23, 42, 0.55), transparent 60%),
+        radial-gradient(circle at 74% -18%, rgba(30, 41, 59, 0.38), transparent 62%),
+        linear-gradient(200deg, #0b1120 0%, #111827 60%, #0a0f1b 100%);
+    color: #f8fafc;
 }
 
-#auth-card {
-    box-shadow: 0 26px 72px -34px rgba(15, 38, 80, 0.7);
+.auth-card {
+    margin: 5rem auto 0;
+    background: linear-gradient(160deg, rgba(15, 23, 42, 0.95), rgba(11, 16, 31, 0.92));
+    border: 1px solid rgba(148, 163, 184, 0.35);
+    box-shadow: 0 26px 60px rgba(2, 6, 23, 0.55);
+}
+
+.auth-header h1,
+.auth-header p,
+.auth-header a,
+.auth-feedback,
+.auth-links,
+.auth-links a {
+    color: inherit;
+}
+
+.auth-header a,
+.auth-links a {
+    color: rgba(129, 140, 248, 0.85);
+}
+
+.auth-header a:hover,
+.auth-header a:focus-visible,
+.auth-links a:hover,
+.auth-links a:focus-visible {
+    color: rgba(191, 219, 254, 0.95);
+}
+
+.auth-form label {
+    color: rgba(226, 232, 240, 0.9);
+}
+
+.auth-form input {
+    background: rgba(15, 23, 42, 0.85);
+    border: 1px solid rgba(148, 163, 184, 0.35);
+    color: #f8fafc;
+}
+
+.auth-form input::placeholder {
+    color: rgba(203, 213, 225, 0.55);
+}
+
+.auth-form input:focus {
+    border-color: rgba(99, 102, 241, 0.65);
+    box-shadow: 0 0 0 0.18rem rgba(129, 140, 248, 0.35);
+    background: rgba(15, 23, 42, 0.95);
+}
+
+.primary-button {
+    background: linear-gradient(135deg, rgba(99, 102, 241, 0.95), rgba(59, 130, 246, 0.9));
+    box-shadow: 0 22px 44px rgba(99, 102, 241, 0.35);
+}
+
+.primary-button:hover,
+.primary-button:focus-visible {
+    background: linear-gradient(135deg, rgba(129, 140, 248, 0.98), rgba(99, 102, 241, 0.92));
+    box-shadow: 0 26px 52px rgba(129, 140, 248, 0.4);
+}
+
+.auth-indicator {
+    color: rgba(226, 232, 240, 0.8);
+}
+
+.spinner {
+    border: 0.15rem solid rgba(99, 102, 241, 0.25);
+    border-top-color: rgba(129, 140, 248, 0.9);
+}
+
+.auth-separator {
+    color: rgba(226, 232, 240, 0.6);
+}
+
+.auth-separator::before,
+.auth-separator::after {
+    width: 32%;
+    background: rgba(148, 163, 184, 0.25);
+}
+
+.sso-button {
+    background: rgba(15, 23, 42, 0.8);
+    border: 1px solid rgba(148, 163, 184, 0.35);
+    color: rgba(226, 232, 240, 0.95);
+}
+
+.sso-button:hover,
+.sso-button:focus-visible {
+    border-color: rgba(129, 140, 248, 0.6);
+    box-shadow: 0 0 0 0.2rem rgba(99, 102, 241, 0.25);
 }

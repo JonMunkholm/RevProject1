@@ -218,13 +218,13 @@ func (q *Queries) GetUserByEmail(ctx context.Context, arg GetUserByEmailParams) 
 	return i, err
 }
 
-const getUserByIDGlobal = `-- name: GetUserByIDGlobal :one
+const getUserByEmailGlobal = `-- name: GetUserByEmailGlobal :one
 SELECT id, created_at, updated_at, company_id, email, password_hash, is_active FROM users
-WHERE ID = $1
+WHERE Email = $1
 `
 
-func (q *Queries) GetUserByIDGlobal(ctx context.Context, id uuid.UUID) (User, error) {
-	row := q.db.QueryRowContext(ctx, getUserByIDGlobal, id)
+func (q *Queries) GetUserByEmailGlobal(ctx context.Context, email string) (User, error) {
+	row := q.db.QueryRowContext(ctx, getUserByEmailGlobal, email)
 	var i User
 	err := row.Scan(
 		&i.ID,
@@ -238,13 +238,13 @@ func (q *Queries) GetUserByIDGlobal(ctx context.Context, id uuid.UUID) (User, er
 	return i, err
 }
 
-const getUserByEmailGlobal = `-- name: GetUserByEmailGlobal :one
+const getUserByIDGlobal = `-- name: GetUserByIDGlobal :one
 SELECT id, created_at, updated_at, company_id, email, password_hash, is_active FROM users
-WHERE Email = $1
+WHERE ID = $1
 `
 
-func (q *Queries) GetUserByEmailGlobal(ctx context.Context, email string) (User, error) {
-	row := q.db.QueryRowContext(ctx, getUserByEmailGlobal, email)
+func (q *Queries) GetUserByIDGlobal(ctx context.Context, id uuid.UUID) (User, error) {
+	row := q.db.QueryRowContext(ctx, getUserByIDGlobal, id)
 	var i User
 	err := row.Scan(
 		&i.ID,

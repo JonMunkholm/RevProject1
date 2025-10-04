@@ -10,7 +10,7 @@ import (
 
 func RegisterPage() templ.Component {
 	return layout.LayoutWithAssets(
-		"Create Your RevProject Workspace",
+		"Create workspace • RevProject",
 		[]string{"/assets/css/auth.css", "/assets/css/register.css"},
 		templ.ComponentFunc(renderRegisterContent),
 	)
@@ -22,75 +22,87 @@ func renderRegisterContent(ctx context.Context, w io.Writer) error {
 }
 
 const registerHTML = `
-<main class="login-layout">
-    <section class="card" id="auth-card">
-        <header>
-            <h1>Register your company</h1>
-            <p class="card-subtitle">
-                Create a company workspace, invite yourself in as the first operator, and you'll be signed in automatically.
-            </p>
+<main class="auth-shell">
+    <section class="auth-panel" id="auth-card">
+        <a class="brand-mark" href="/" aria-label="RevProject home">
+            <span class="brand-icon" aria-hidden="true"></span>
+            <span class="brand-text">RevProject</span>
+        </a>
+
+        <header class="auth-header">
+            <h1>Create your workspace</h1>
+            <p>Start fresh with a dedicated RevProject space for your team.</p>
         </header>
 
+        <button type="button" class="sso-button" name="sso" value="true">
+            Continue with Single Sign-On
+        </button>
+
+        <div class="auth-divider" role="presentation"><span>or register with email</span></div>
+
+        <div id="register-message" class="form-feedback" aria-live="polite" role="status"></div>
+
         <form
-            id="register-form"
+            class="auth-form"
             method="post"
             action="/auth/register"
             hx-post="/auth/register"
             hx-target="#register-message"
             hx-swap="innerHTML"
             hx-indicator="#register-indicator"
+            novalidate
         >
-            <label>
-                Company name
+            <div class="form-field">
+                <label for="register-company">Company name</label>
                 <input
+                    id="register-company"
                     type="text"
                     name="companyName"
-                    class="input-field"
                     autocomplete="organization"
                     required
                     placeholder="Acme Corporation"
                 />
-            </label>
+            </div>
 
-            <label>
-                Email address
+            <div class="form-field">
+                <label for="register-email">Work email</label>
                 <input
+                    id="register-email"
                     type="email"
                     name="email"
-                    class="input-field"
                     autocomplete="email"
                     required
-                    placeholder="founder@acme.com"
+                    placeholder="you@acme.com"
                 />
-            </label>
+            </div>
 
-            <label>
-                Password
+            <div class="form-field">
+                <label for="register-password">Password</label>
                 <input
+                    id="register-password"
                     type="password"
                     name="password"
-                    class="input-field"
                     autocomplete="new-password"
                     minlength="8"
                     required
                     placeholder="Create a secure password"
                 />
-            </label>
+            </div>
 
-            <label>
-                Confirm password
+            <div class="form-field">
+                <label for="register-confirm">Confirm password</label>
                 <input
+                    id="register-confirm"
                     type="password"
                     name="confirmPassword"
-                    class="input-field"
                     autocomplete="new-password"
                     minlength="8"
                     required
                     placeholder="Re-enter your password"
                 />
-            </label>
+            </div>
 
-            <button type="submit">Create workspace</button>
+            <button type="submit" class="primary-button">Create workspace</button>
 
             <div
                 id="register-indicator"
@@ -98,20 +110,23 @@ const registerHTML = `
                 aria-live="polite"
                 aria-hidden="true"
             >
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <circle cx="12" cy="12" r="9" stroke-opacity="0.2" />
-                    <path d="M21 12a9 9 0 0 1-9 9" />
-                </svg>
-                Setting up your workspace…
+                <span class="spinner" aria-hidden="true"></span>
+                <span>Setting up your workspace…</span>
             </div>
-
-            <p id="register-message" class="message" aria-live="polite"></p>
         </form>
 
-        <div class="alt-actions">
+        <div class="signup-line">
             <span>Already have access?</span>
-            <a href="/login">Return to login</a>
+            <a href="/login">Sign in</a>
         </div>
+
+        <footer class="support-links">
+            <a href="/support">Help</a>
+            <span aria-hidden="true">·</span>
+            <a href="/legal/privacy">Privacy</a>
+            <span aria-hidden="true">·</span>
+            <a href="/legal/terms">Terms</a>
+        </footer>
     </section>
 </main>
 `

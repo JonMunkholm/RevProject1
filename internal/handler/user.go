@@ -38,7 +38,6 @@ type userResponse struct {
 	IsActive  bool      `json:"IsActive"`
 }
 
-
 func (u *User) Create(w http.ResponseWriter, r *http.Request) {
 
 	companyID, err := uuid.Parse(chi.URLParam(r, "companyID"))

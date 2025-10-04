@@ -1,4 +1,21 @@
 .env
+accounting_context/
 sqlc.yaml
 Taskfile.yaml
 .cache/
+# Build artifacts
+bin/
+dist/
+tmp/
+coverage/
+*.out
+*.log
+
+# IDE/editor state
+.idea/
+.vscode/
+.DS_Store
+
+# Vendored dependencies
+vendor/
+node_modules/

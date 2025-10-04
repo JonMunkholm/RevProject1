@@ -1,23 +1,92 @@
 @import url("./auth.css");
 
-:root {
-    --auth-accent: #22d3ee;
-    --auth-accent-strong: #0891b2;
-}
-
 body {
     background:
-        radial-gradient(circle at 16% -20%, rgba(45, 212, 191, 0.32), transparent 58%),
-        radial-gradient(circle at 84% -10%, rgba(8, 145, 178, 0.28), transparent 56%),
-        var(--auth-bg);
+        radial-gradient(circle at 22% -12%, rgba(17, 24, 39, 0.5), transparent 58%),
+        radial-gradient(circle at 78% -20%, rgba(30, 41, 59, 0.42), transparent 62%),
+        linear-gradient(200deg, #0b1120 0%, #101726 60%, #0a0f1b 100%);
 }
 
-button[type="submit"] {
-    background: linear-gradient(120deg, var(--auth-accent-strong), #22d3ee);
-    box-shadow: 0 22px 46px -24px rgba(34, 211, 238, 0.6);
+.auth-panel {
+    background: linear-gradient(160deg, rgba(16, 24, 45, 0.96), rgba(12, 19, 34, 0.94));
+    border-color: rgba(148, 163, 184, 0.35);
+    padding: calc(var(--auth-space-md) * 0.95);
+    gap: calc(var(--auth-space-sm) + 0.35rem);
 }
 
-button[type="submit"]:hover,
-button[type="submit"]:focus {
-    box-shadow: 0 26px 52px -24px rgba(34, 211, 238, 0.7);
+.auth-panel,
+.auth-panel h1,
+.auth-panel p,
+.auth-panel a,
+.auth-links,
+.auth-links a {
+    color: rgba(241, 245, 249, 0.95);
+}
+
+.auth-panel a {
+    color: rgba(147, 197, 253, 0.85);
+}
+
+.auth-panel a:hover,
+.auth-panel a:focus-visible,
+.auth-links a:hover,
+.auth-links a:focus-visible {
+    color: rgba(191, 219, 254, 0.95);
+}
+
+.auth-form label {
+    color: rgba(226, 232, 240, 0.9);
+}
+
+.auth-form input {
+    background: rgba(15, 23, 42, 0.85);
+    border: 1px solid rgba(148, 163, 184, 0.35);
+    color: #f8fafc;
+}
+
+.auth-form input::placeholder {
+    color: rgba(203, 213, 225, 0.55);
+}
+
+.auth-form input:focus {
+    border-color: rgba(129, 140, 248, 0.6);
+    box-shadow: 0 0 0 0.18rem rgba(99, 102, 241, 0.28);
+    background: rgba(15, 23, 42, 0.95);
+}
+
+.primary-button {
+    background: linear-gradient(135deg, rgba(148, 163, 184, 0.4), rgba(226, 232, 240, 0.25));
+    border: 1px solid rgba(148, 163, 184, 0.35);
+    color: #f8fafc;
+    box-shadow: 0 20px 40px rgba(8, 15, 30, 0.45);
+}
+
+.primary-button:hover,
+.primary-button:focus-visible {
+    background: linear-gradient(135deg, rgba(226, 232, 240, 0.4), rgba(148, 163, 184, 0.35));
+    box-shadow: 0 24px 48px rgba(8, 15, 30, 0.5);
+}
+
+.auth-form {
+    gap: var(--auth-space-sm);
+}
+
+.auth-form .form-field + .form-field {
+    margin-top: var(--auth-space-xs);
+}
+
+.primary-button {
+    margin-top: calc(var(--auth-space-xs) * 0.6);
+}
+
+.sso-button {
+    background: rgba(15, 23, 42, 0.82);
+    border: 1px solid rgba(148, 163, 184, 0.35);
+    color: rgba(226, 232, 240, 0.94);
+}
+
+.sso-button:hover,
+.sso-button:focus-visible {
+    border-color: rgba(129, 140, 248, 0.55);
+    box-shadow: 0 0 0 0.2rem rgba(99, 102, 241, 0.25);
 }
