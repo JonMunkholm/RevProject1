@@ -8,28 +8,60 @@ package database
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/sqlc-dev/pqtype"
 )
 
+const clearDefaultAIProviderCredentials = `-- name: ClearDefaultAIProviderCredentials :exec
+UPDATE ai_provider_credentials
+SET is_default = false,
+    updated_at = now()
+WHERE company_id = $1
+  AND provider_id = $2
+  AND (
+    ($3 IS NULL AND user_id IS NULL)
+    OR ($3 IS NOT NULL AND user_id IS NOT DISTINCT FROM $3)
+  )
+`
+
+type ClearDefaultAIProviderCredentialsParams struct {
+	CompanyID  uuid.UUID
+	ProviderID string
+	UserID     interface{}
+}
+
+func (q *Queries) ClearDefaultAIProviderCredentials(ctx context.Context, arg ClearDefaultAIProviderCredentialsParams) error {
+	_, err := q.db.ExecContext(ctx, clearDefaultAIProviderCredentials, arg.CompanyID, arg.ProviderID, arg.UserID)
+	return err
+}
+
 const deleteAIProviderCredential = `-- name: DeleteAIProviderCredential :exec
 DELETE FROM ai_provider_credentials
 WHERE company_id = $1
-  AND user_id    = $2
+  AND user_id IS NOT DISTINCT FROM $2
   AND provider_id = $3
 `
 
 type DeleteAIProviderCredentialParams struct {
 	CompanyID  uuid.UUID
-	UserID     uuid.UUID
+	UserID     uuid.NullUUID
 	ProviderID string
 }
 
 func (q *Queries) DeleteAIProviderCredential(ctx context.Context, arg DeleteAIProviderCredentialParams) error {
 	_, err := q.db.ExecContext(ctx, deleteAIProviderCredential, arg.CompanyID, arg.UserID, arg.ProviderID)
+	return err
+}
+
+const deleteAIProviderCredentialByID = `-- name: DeleteAIProviderCredentialByID :exec
+DELETE FROM ai_provider_credentials
+WHERE id = $1
+`
+
+func (q *Queries) DeleteAIProviderCredentialByID(ctx context.Context, id uuid.UUID) error {
+	_, err := q.db.ExecContext(ctx, deleteAIProviderCredentialByID, id)
 	return err
 }
 
@@ -50,21 +82,13 @@ func (q *Queries) DeleteAIUserPreference(ctx context.Context, arg DeleteAIUserPr
 }
 
 const getAIProviderCredential = `-- name: GetAIProviderCredential :one
-SELECT id, company_id, user_id, provider_id, credential_cipher, credential_hash, metadata, created_at, updated_at, last_used_at, rotated_at
+SELECT id, company_id, user_id, provider_id, credential_cipher, credential_hash, metadata, created_at, updated_at, last_used_at, rotated_at, label, is_default, last_tested_at, fingerprint
 FROM ai_provider_credentials
-WHERE company_id = $1
-  AND user_id    = $2
-  AND provider_id = $3
+WHERE id = $1
 `
 
-type GetAIProviderCredentialParams struct {
-	CompanyID  uuid.UUID
-	UserID     uuid.UUID
-	ProviderID string
-}
-
-func (q *Queries) GetAIProviderCredential(ctx context.Context, arg GetAIProviderCredentialParams) (AiProviderCredential, error) {
-	row := q.db.QueryRowContext(ctx, getAIProviderCredential, arg.CompanyID, arg.UserID, arg.ProviderID)
+func (q *Queries) GetAIProviderCredential(ctx context.Context, id uuid.UUID) (AiProviderCredential, error) {
+	row := q.db.QueryRowContext(ctx, getAIProviderCredential, id)
 	var i AiProviderCredential
 	err := row.Scan(
 		&i.ID,
@@ -78,6 +102,10 @@ func (q *Queries) GetAIProviderCredential(ctx context.Context, arg GetAIProvider
 		&i.UpdatedAt,
 		&i.LastUsedAt,
 		&i.RotatedAt,
+		&i.Label,
+		&i.IsDefault,
+		&i.LastTestedAt,
+		&i.Fingerprint,
 	)
 	return i, err
 }
@@ -115,7 +143,10 @@ INSERT INTO ai_provider_credentials (
     provider_id,
     credential_cipher,
     credential_hash,
-    metadata
+    metadata,
+    label,
+    is_default,
+    last_tested_at
 )
 VALUES (
     $1,
@@ -123,18 +154,24 @@ VALUES (
     $3,
     $4,
     $5,
-    COALESCE($6, '{}'::jsonb)
+    COALESCE($6, '{}'::jsonb),
+    $7,
+    COALESCE($8, false),
+    $9
 )
-RETURNING id, company_id, user_id, provider_id, credential_cipher, credential_hash, metadata, created_at, updated_at, last_used_at, rotated_at
+RETURNING id, company_id, user_id, provider_id, credential_cipher, credential_hash, metadata, created_at, updated_at, last_used_at, rotated_at, label, is_default, last_tested_at, fingerprint
 `
 
 type InsertAIProviderCredentialParams struct {
 	CompanyID        uuid.UUID
-	UserID           uuid.UUID
+	UserID           uuid.NullUUID
 	ProviderID       string
 	CredentialCipher []byte
 	CredentialHash   []byte
-	Column6          interface{}
+	Metadata         interface{}
+	Label            sql.NullString
+	IsDefault        interface{}
+	LastTestedAt     sql.NullTime
 }
 
 func (q *Queries) InsertAIProviderCredential(ctx context.Context, arg InsertAIProviderCredentialParams) (AiProviderCredential, error) {
@@ -144,7 +181,10 @@ func (q *Queries) InsertAIProviderCredential(ctx context.Context, arg InsertAIPr
 		arg.ProviderID,
 		arg.CredentialCipher,
 		arg.CredentialHash,
-		arg.Column6,
+		arg.Metadata,
+		arg.Label,
+		arg.IsDefault,
+		arg.LastTestedAt,
 	)
 	var i AiProviderCredential
 	err := row.Scan(
@@ -159,8 +199,51 @@ func (q *Queries) InsertAIProviderCredential(ctx context.Context, arg InsertAIPr
 		&i.UpdatedAt,
 		&i.LastUsedAt,
 		&i.RotatedAt,
+		&i.Label,
+		&i.IsDefault,
+		&i.LastTestedAt,
+		&i.Fingerprint,
 	)
 	return i, err
+}
+
+const insertAIProviderCredentialEvent = `-- name: InsertAIProviderCredentialEvent :exec
+INSERT INTO ai_provider_credential_events (
+    company_id,
+    user_id,
+    actor_user_id,
+    provider_id,
+    action,
+    metadata_snapshot
+) VALUES (
+    $1,
+    $2,
+    $3,
+    $4,
+    $5,
+    COALESCE($6, '{}'::jsonb)
+)
+`
+
+type InsertAIProviderCredentialEventParams struct {
+	CompanyID        uuid.UUID
+	UserID           uuid.NullUUID
+	ActorUserID      uuid.NullUUID
+	ProviderID       string
+	Action           string
+	MetadataSnapshot interface{}
+}
+
+func (q *Queries) InsertAIProviderCredentialEvent(ctx context.Context, arg InsertAIProviderCredentialEventParams) error {
+	_, err := q.db.ExecContext(ctx, insertAIProviderCredentialEvent,
+		arg.CompanyID,
+		arg.UserID,
+		arg.ActorUserID,
+		arg.ProviderID,
+		arg.Action,
+		arg.MetadataSnapshot,
+	)
+	return err
 }
 
 const insertAIToolInvocation = `-- name: InsertAIToolInvocation :exec
@@ -204,6 +287,229 @@ func (q *Queries) InsertAIToolInvocation(ctx context.Context, arg InsertAIToolIn
 		arg.ErrorMessage,
 	)
 	return err
+}
+
+const listAIProviderCredentialEvents = `-- name: ListAIProviderCredentialEvents :many
+SELECT id, company_id, user_id, actor_user_id, provider_id, action, metadata_snapshot, created_at
+FROM ai_provider_credential_events
+WHERE company_id = $1
+  AND provider_id = $2
+ORDER BY created_at DESC
+LIMIT $4 OFFSET $3
+`
+
+type ListAIProviderCredentialEventsParams struct {
+	CompanyID  uuid.UUID
+	ProviderID string
+	Offset     int32
+	Limit      int32
+}
+
+func (q *Queries) ListAIProviderCredentialEvents(ctx context.Context, arg ListAIProviderCredentialEventsParams) ([]AiProviderCredentialEvent, error) {
+	rows, err := q.db.QueryContext(ctx, listAIProviderCredentialEvents,
+		arg.CompanyID,
+		arg.ProviderID,
+		arg.Offset,
+		arg.Limit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []AiProviderCredentialEvent
+	for rows.Next() {
+		var i AiProviderCredentialEvent
+		if err := rows.Scan(
+			&i.ID,
+			&i.CompanyID,
+			&i.UserID,
+			&i.ActorUserID,
+			&i.ProviderID,
+			&i.Action,
+			&i.MetadataSnapshot,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listAIProviderCredentialsByCompany = `-- name: ListAIProviderCredentialsByCompany :many
+SELECT id, company_id, user_id, provider_id, credential_cipher, credential_hash, metadata, created_at, updated_at, last_used_at, rotated_at, label, is_default, last_tested_at, fingerprint
+FROM ai_provider_credentials
+WHERE company_id = $1
+ORDER BY provider_id, user_id, is_default DESC, updated_at DESC
+LIMIT $3 OFFSET $2
+`
+
+type ListAIProviderCredentialsByCompanyParams struct {
+	CompanyID uuid.UUID
+	Offset    int32
+	Limit     int32
+}
+
+func (q *Queries) ListAIProviderCredentialsByCompany(ctx context.Context, arg ListAIProviderCredentialsByCompanyParams) ([]AiProviderCredential, error) {
+	rows, err := q.db.QueryContext(ctx, listAIProviderCredentialsByCompany, arg.CompanyID, arg.Offset, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []AiProviderCredential
+	for rows.Next() {
+		var i AiProviderCredential
+		if err := rows.Scan(
+			&i.ID,
+			&i.CompanyID,
+			&i.UserID,
+			&i.ProviderID,
+			&i.CredentialCipher,
+			&i.CredentialHash,
+			&i.Metadata,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.LastUsedAt,
+			&i.RotatedAt,
+			&i.Label,
+			&i.IsDefault,
+			&i.LastTestedAt,
+			&i.Fingerprint,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listAIProviderCredentialsByScope = `-- name: ListAIProviderCredentialsByScope :many
+SELECT id, company_id, user_id, provider_id, credential_cipher, credential_hash, metadata, created_at, updated_at, last_used_at, rotated_at, label, is_default, last_tested_at, fingerprint
+FROM ai_provider_credentials
+WHERE company_id = $1
+  AND provider_id = $2
+  AND (
+    ($3 IS NULL AND user_id IS NULL)
+    OR ($3 IS NOT NULL AND user_id IS NOT DISTINCT FROM $3)
+  )
+ORDER BY is_default DESC, updated_at DESC, created_at DESC
+`
+
+type ListAIProviderCredentialsByScopeParams struct {
+	CompanyID  uuid.UUID
+	ProviderID string
+	UserID     interface{}
+}
+
+func (q *Queries) ListAIProviderCredentialsByScope(ctx context.Context, arg ListAIProviderCredentialsByScopeParams) ([]AiProviderCredential, error) {
+	rows, err := q.db.QueryContext(ctx, listAIProviderCredentialsByScope, arg.CompanyID, arg.ProviderID, arg.UserID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []AiProviderCredential
+	for rows.Next() {
+		var i AiProviderCredential
+		if err := rows.Scan(
+			&i.ID,
+			&i.CompanyID,
+			&i.UserID,
+			&i.ProviderID,
+			&i.CredentialCipher,
+			&i.CredentialHash,
+			&i.Metadata,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.LastUsedAt,
+			&i.RotatedAt,
+			&i.Label,
+			&i.IsDefault,
+			&i.LastTestedAt,
+			&i.Fingerprint,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listAIProviderCredentialsForResolver = `-- name: ListAIProviderCredentialsForResolver :many
+SELECT id, company_id, user_id, provider_id, credential_cipher, credential_hash, metadata, created_at, updated_at, last_used_at, rotated_at, label, is_default, last_tested_at, fingerprint
+FROM ai_provider_credentials
+WHERE company_id = $1
+  AND provider_id = $2
+  AND (
+    user_id IS NULL OR user_id = $3
+  )
+ORDER BY
+  CASE WHEN user_id = $3 THEN 0 ELSE 1 END,
+  is_default DESC,
+  updated_at DESC,
+  created_at DESC
+`
+
+type ListAIProviderCredentialsForResolverParams struct {
+	CompanyID  uuid.UUID
+	ProviderID string
+	UserID     uuid.NullUUID
+}
+
+func (q *Queries) ListAIProviderCredentialsForResolver(ctx context.Context, arg ListAIProviderCredentialsForResolverParams) ([]AiProviderCredential, error) {
+	rows, err := q.db.QueryContext(ctx, listAIProviderCredentialsForResolver, arg.CompanyID, arg.ProviderID, arg.UserID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []AiProviderCredential
+	for rows.Next() {
+		var i AiProviderCredential
+		if err := rows.Scan(
+			&i.ID,
+			&i.CompanyID,
+			&i.UserID,
+			&i.ProviderID,
+			&i.CredentialCipher,
+			&i.CredentialHash,
+			&i.Metadata,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.LastUsedAt,
+			&i.RotatedAt,
+			&i.Label,
+			&i.IsDefault,
+			&i.LastTestedAt,
+			&i.Fingerprint,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listAIToolInvocationsByProvider = `-- name: ListAIToolInvocationsByProvider :many
@@ -305,13 +611,13 @@ UPDATE ai_provider_credentials
 SET last_used_at = now(),
     updated_at   = now()
 WHERE company_id = $1
-  AND user_id    = $2
+  AND user_id IS NOT DISTINCT FROM $2
   AND provider_id = $3
 `
 
 type TouchAIProviderCredentialParams struct {
 	CompanyID  uuid.UUID
-	UserID     uuid.UUID
+	UserID     uuid.NullUUID
 	ProviderID string
 }
 
@@ -320,37 +626,56 @@ func (q *Queries) TouchAIProviderCredential(ctx context.Context, arg TouchAIProv
 	return err
 }
 
+const touchAIProviderCredentialByID = `-- name: TouchAIProviderCredentialByID :exec
+UPDATE ai_provider_credentials
+SET last_used_at = now(),
+    updated_at   = now()
+WHERE id = $1
+`
+
+func (q *Queries) TouchAIProviderCredentialByID(ctx context.Context, id uuid.UUID) error {
+	_, err := q.db.ExecContext(ctx, touchAIProviderCredentialByID, id)
+	return err
+}
+
 const updateAIProviderCredential = `-- name: UpdateAIProviderCredential :one
 UPDATE ai_provider_credentials
 SET
-    credential_cipher = $3,
-    credential_hash   = $4,
-    metadata          = COALESCE($5, metadata),
+    credential_cipher = COALESCE($1, credential_cipher),
+    credential_hash   = COALESCE($2, credential_hash),
+    metadata          = COALESCE($3, metadata),
+    label             = COALESCE($4, label),
+    is_default        = COALESCE($5, is_default),
+    last_tested_at    = COALESCE($6, last_tested_at),
     updated_at        = now(),
-    rotated_at        = now()
-WHERE company_id = $1
-  AND user_id    = $2
-  AND provider_id = $6
-RETURNING id, company_id, user_id, provider_id, credential_cipher, credential_hash, metadata, created_at, updated_at, last_used_at, rotated_at
+    rotated_at        = CASE
+        WHEN $1 IS NOT NULL
+             AND $1 IS DISTINCT FROM credential_cipher THEN now()
+        ELSE rotated_at
+    END
+WHERE id = $7
+RETURNING id, company_id, user_id, provider_id, credential_cipher, credential_hash, metadata, created_at, updated_at, last_used_at, rotated_at, label, is_default, last_tested_at, fingerprint
 `
 
 type UpdateAIProviderCredentialParams struct {
-	CompanyID        uuid.UUID
-	UserID           uuid.UUID
 	CredentialCipher []byte
 	CredentialHash   []byte
-	Metadata         json.RawMessage
-	ProviderID       string
+	Metadata         pqtype.NullRawMessage
+	Label            sql.NullString
+	IsDefault        sql.NullBool
+	LastTestedAt     sql.NullTime
+	ID               uuid.UUID
 }
 
 func (q *Queries) UpdateAIProviderCredential(ctx context.Context, arg UpdateAIProviderCredentialParams) (AiProviderCredential, error) {
 	row := q.db.QueryRowContext(ctx, updateAIProviderCredential,
-		arg.CompanyID,
-		arg.UserID,
 		arg.CredentialCipher,
 		arg.CredentialHash,
 		arg.Metadata,
-		arg.ProviderID,
+		arg.Label,
+		arg.IsDefault,
+		arg.LastTestedAt,
+		arg.ID,
 	)
 	var i AiProviderCredential
 	err := row.Scan(
@@ -365,6 +690,10 @@ func (q *Queries) UpdateAIProviderCredential(ctx context.Context, arg UpdateAIPr
 		&i.UpdatedAt,
 		&i.LastUsedAt,
 		&i.RotatedAt,
+		&i.Label,
+		&i.IsDefault,
+		&i.LastTestedAt,
+		&i.Fingerprint,
 	)
 	return i, err
 }

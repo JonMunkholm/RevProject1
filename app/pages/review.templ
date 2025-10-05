@@ -3,7 +3,7 @@ package pages
 import "github.com/JonMunkholm/RevProject1/app/layout"
 
 templ ReviewPage(active string) {
-    @layout.BaseLayout(
+    @layout.LayoutWithAssets(
         "Review Workspace",
         []string{"/assets/css/dashboard.css", "/assets/css/review.css"},
         ReviewShell(active),

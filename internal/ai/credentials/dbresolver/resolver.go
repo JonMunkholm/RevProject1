@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -22,21 +23,35 @@ type Cipher interface {
 	Decrypt(ctx context.Context, ciphertext []byte) ([]byte, error)
 }
 
-// CredentialStore captures the subset of database operations the resolver requires.
+// CredentialStore captures the persistence operations the resolver and handlers require.
 type CredentialStore interface {
-	FetchCredential(ctx context.Context, companyID, userID uuid.UUID, providerID string) (Record, error)
-	TouchCredential(ctx context.Context, companyID, userID uuid.UUID, providerID string) error
-	UpsertCredential(ctx context.Context, record Record) error
+	ResolveCredential(ctx context.Context, companyID uuid.UUID, userID uuid.NullUUID, providerID string) (Record, error)
+	GetCredential(ctx context.Context, id uuid.UUID) (Record, error)
+	TouchCredential(ctx context.Context, id uuid.UUID) error
+	UpsertCredential(ctx context.Context, record Record) (Record, error)
+	ListCompanyCredentials(ctx context.Context, companyID uuid.UUID, limit, offset int32) ([]Record, error)
+	ListProviderCredentials(ctx context.Context, companyID uuid.UUID, providerID string, userID uuid.NullUUID) ([]Record, error)
+	DeleteCredential(ctx context.Context, id uuid.UUID) error
+	ClearDefault(ctx context.Context, companyID uuid.UUID, providerID string, userID uuid.NullUUID) error
 }
 
 // Record mirrors the ai_provider_credentials table schema.
 type Record struct {
+	ID               uuid.UUID
 	CompanyID        uuid.UUID
-	UserID           uuid.UUID
+	UserID           uuid.NullUUID
 	ProviderID       string
 	CredentialCipher []byte
 	CredentialHash   []byte
 	Metadata         map[string]any
+	Label            *string
+	IsDefault        bool
+	LastTestedAt     *time.Time
+	Fingerprint      string
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
+	LastUsedAt       *time.Time
+	RotatedAt        *time.Time
 }
 
 // Reference decomposes the credential reference string passed around the system.
@@ -93,12 +108,12 @@ func (r *DBResolver) Resolve(ctx context.Context, reference string) (string, err
 		return "", err
 	}
 
-	rec, err := r.store.FetchCredential(ctx, ref.CompanyID, ref.UserID, ref.ProviderID)
+	rec, err := r.store.ResolveCredential(ctx, ref.CompanyID, nullableUUID(ref.UserID), ref.ProviderID)
 	if err != nil {
 		return "", err
 	}
 
-	if err := r.store.TouchCredential(ctx, ref.CompanyID, ref.UserID, ref.ProviderID); err != nil {
+	if err := r.store.TouchCredential(ctx, rec.ID); err != nil {
 		r.logger.Warn(ctx, "ai: failed to touch credential", err, map[string]any{"reference": reference})
 	}
 
@@ -117,7 +132,7 @@ func (r *DBResolver) Rotate(ctx context.Context, reference string) error {
 		return err
 	}
 
-	rec, err := r.store.FetchCredential(ctx, ref.CompanyID, ref.UserID, ref.ProviderID)
+	rec, err := r.store.ResolveCredential(ctx, ref.CompanyID, nullableUUID(ref.UserID), ref.ProviderID)
 	if err != nil {
 		return err
 	}
@@ -134,7 +149,7 @@ func (r *DBResolver) Rotate(ctx context.Context, reference string) error {
 
 	rec.CredentialCipher = ciphertext
 	rec.CredentialHash = hashSecret(plaintext)
-	if err := r.store.UpsertCredential(ctx, rec); err != nil {
+	if _, err := r.store.UpsertCredential(ctx, rec); err != nil {
 		return err
 	}
 
@@ -149,4 +164,11 @@ func (r *DBResolver) Audit(ctx context.Context, reference string, metadata map[s
 func hashSecret(secret []byte) []byte {
 	sum := sha256.Sum256(secret)
 	return sum[:]
+}
+
+func nullableUUID(id uuid.UUID) uuid.NullUUID {
+	if id == uuid.Nil {
+		return uuid.NullUUID{}
+	}
+	return uuid.NullUUID{UUID: id, Valid: true}
 }

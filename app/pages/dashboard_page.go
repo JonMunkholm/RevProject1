@@ -78,7 +78,7 @@ func dashboardShell(cfg dashboardPageConfig) templ.Component {
 		if err := write(w, `<div class="dashboard-frame">`); err != nil {
 			return err
 		}
-		if err := dashboardSidebar(cfg.Active).Render(ctx, w); err != nil {
+		if err := DashboardSidebar(cfg.Active).Render(ctx, w); err != nil {
 			return err
 		}
 		if err := dashboardMain(cfg).Render(ctx, w); err != nil {
@@ -88,7 +88,7 @@ func dashboardShell(cfg dashboardPageConfig) templ.Component {
 	})
 }
 
-func dashboardSidebar(active string) templ.Component {
+func DashboardSidebar(active string) templ.Component {
 	return templ.ComponentFunc(func(ctx context.Context, w io.Writer) error {
 		if err := write(w, `<aside class="side-nav" data-dashboard-nav>`); err != nil {
 			return err

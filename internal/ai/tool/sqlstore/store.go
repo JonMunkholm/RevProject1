@@ -8,7 +8,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/sqlc-dev/pqtype"
 
-	"github.com/JonMunkholm/RevProject1/internal/ai/tool"
+	"github.com/JonMunkholm/RevProject1/internal/ai/tool/audit"
 	"github.com/JonMunkholm/RevProject1/internal/database"
 )
 
@@ -19,7 +19,7 @@ type Store struct {
 
 func New(q *database.Queries) *Store { return &Store{queries: q} }
 
-func (s *Store) InsertToolInvocation(ctx context.Context, params tool.InvocationRecord) error {
+func (s *Store) InsertToolInvocation(ctx context.Context, params audit.InvocationRecord) error {
 	var userID uuid.NullUUID
 	if params.UserID != nil {
 		if id, err := uuid.Parse(*params.UserID); err == nil {

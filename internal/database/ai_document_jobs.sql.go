@@ -61,6 +61,33 @@ func (q *Queries) GetAIDocumentJob(ctx context.Context, arg GetAIDocumentJobPara
 	return i, err
 }
 
+const getNextQueuedAIDocumentJob = `-- name: GetNextQueuedAIDocumentJob :one
+SELECT id, company_id, user_id, provider_id, status, request, response, error_message, created_at, updated_at, completed_at
+FROM ai_document_jobs
+WHERE status = 'queued'
+ORDER BY created_at ASC
+LIMIT 1
+`
+
+func (q *Queries) GetNextQueuedAIDocumentJob(ctx context.Context) (AiDocumentJob, error) {
+	row := q.db.QueryRowContext(ctx, getNextQueuedAIDocumentJob)
+	var i AiDocumentJob
+	err := row.Scan(
+		&i.ID,
+		&i.CompanyID,
+		&i.UserID,
+		&i.ProviderID,
+		&i.Status,
+		&i.Request,
+		&i.Response,
+		&i.ErrorMessage,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.CompletedAt,
+	)
+	return i, err
+}
+
 const insertAIDocumentJob = `-- name: InsertAIDocumentJob :one
 INSERT INTO ai_document_jobs (
     company_id,

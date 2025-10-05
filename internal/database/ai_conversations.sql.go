@@ -85,6 +85,34 @@ func (q *Queries) DeleteAIConversationSession(ctx context.Context, arg DeleteAIC
 	return err
 }
 
+const getAIConversationSession = `-- name: GetAIConversationSession :one
+SELECT id, company_id, user_id, provider_id, title, metadata, created_at, updated_at
+FROM ai_conversation_sessions
+WHERE id = $1
+  AND company_id = $2
+`
+
+type GetAIConversationSessionParams struct {
+	ID        uuid.UUID
+	CompanyID uuid.UUID
+}
+
+func (q *Queries) GetAIConversationSession(ctx context.Context, arg GetAIConversationSessionParams) (AiConversationSession, error) {
+	row := q.db.QueryRowContext(ctx, getAIConversationSession, arg.ID, arg.CompanyID)
+	var i AiConversationSession
+	err := row.Scan(
+		&i.ID,
+		&i.CompanyID,
+		&i.UserID,
+		&i.ProviderID,
+		&i.Title,
+		&i.Metadata,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const insertAIConversationMessage = `-- name: InsertAIConversationMessage :one
 INSERT INTO ai_conversation_messages (
     session_id,

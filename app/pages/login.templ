@@ -3,7 +3,7 @@ package pages
 import "github.com/JonMunkholm/RevProject1/app/layout"
 
 templ LoginPage() {
-    @layout.BaseLayout("Sign In • RevProject", []string{"/assets/css/auth.css", "/assets/css/login.css"}, LoginContent())
+    @layout.LayoutWithAssets("Sign In • RevProject", []string{"/assets/css/auth.css", "/assets/css/login.css"}, LoginContent())
 }
 
 templ LoginContent() {

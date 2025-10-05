@@ -47,6 +47,7 @@ func (a *App) loadRoutes() {
 			r.Route("/review", a.loadReviewRoutes)
 			r.Route("/companies", a.loadCompanyRoutes)
 			r.Route("/admin", a.loadAdminRoutes)
+			r.Route("/ai", a.loadAIRoutes)
 		})
 	})
 
@@ -151,6 +152,37 @@ func (a *App) loadCompanyRoutes(r chi.Router) {
 	r.Route("/{companyID}/performance-obligations", a.loadPerformanceObRoutes)
 	r.Route("/{companyID}/bundles", a.loadBundleRoutes)
 
+}
+
+func (a *App) loadAIRoutes(r chi.Router) {
+	aiHandler := &handler.AI{
+		Conversations:     a.convService,
+		Documents:         a.docService,
+		DefaultProvider:   defaultAIProvider,
+		Client:            a.aiClient,
+		Resolver:          a.aiResolver,
+		APIKey:            a.aiAPIKey,
+		CredentialStore:   a.credentialStore,
+		CredentialCipher:  a.credentialCipher,
+		CredentialEvents:  a.credentialEvents,
+		CredentialMetrics: a.credentialMetrics,
+	}
+
+	r.Post("/conversations", aiHandler.CreateConversation)
+	r.Get("/conversations", aiHandler.ListConversations)
+	r.Get("/conversations/{sessionID}/messages", aiHandler.ListConversationMessages)
+	r.Post("/conversations/{sessionID}/messages", aiHandler.AppendConversationMessage)
+
+	r.Post("/documents/jobs", aiHandler.CreateDocumentJob)
+	r.Get("/documents/jobs", aiHandler.ListDocumentJobs)
+	r.Get("/documents/jobs/{jobID}", aiHandler.GetDocumentJob)
+	r.Get("/providers", aiHandler.ListProviderCredentials)
+	r.Post("/providers", aiHandler.UpsertProviderCredential)
+	r.Post("/providers/test", aiHandler.TestProviderCredential)
+	r.Get("/providers/{providerID}/events", aiHandler.ListProviderCredentialEvents)
+	r.Post("/providers/{providerID}/credential", aiHandler.UpsertProviderCredential)
+	r.Post("/providers/{providerID}/credential/test", aiHandler.TestProviderCredential)
+	r.Delete("/credentials/{credentialID}", aiHandler.DeleteProviderCredential)
 }
 
 func (a *App) loadUserRoutes(r chi.Router) {

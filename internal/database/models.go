@@ -50,7 +50,7 @@ type AiDocumentJob struct {
 type AiProviderCredential struct {
 	ID               uuid.UUID
 	CompanyID        uuid.UUID
-	UserID           uuid.UUID
+	UserID           uuid.NullUUID
 	ProviderID       string
 	CredentialCipher []byte
 	CredentialHash   []byte
@@ -59,6 +59,21 @@ type AiProviderCredential struct {
 	UpdatedAt        time.Time
 	LastUsedAt       sql.NullTime
 	RotatedAt        sql.NullTime
+	Label            sql.NullString
+	IsDefault        bool
+	LastTestedAt     sql.NullTime
+	Fingerprint      sql.NullString
+}
+
+type AiProviderCredentialEvent struct {
+	ID               uuid.UUID
+	CompanyID        uuid.UUID
+	UserID           uuid.NullUUID
+	ActorUserID      uuid.NullUUID
+	ProviderID       string
+	Action           string
+	MetadataSnapshot json.RawMessage
+	CreatedAt        time.Time
 }
 
 type AiToolInvocation struct {

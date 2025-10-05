@@ -7,7 +7,7 @@ import (
 )
 
 templ LandingPage() {
-    @layout.BaseLayout("RevProject Portal", []string{"/assets/css/landing.css"}, LandingContent())
+    @layout.LayoutWithAssets("RevProject Portal", []string{"/assets/css/landing.css"}, LandingContent())
 }
 
 templ LandingContent() {

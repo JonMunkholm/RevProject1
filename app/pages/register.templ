@@ -3,7 +3,7 @@ package pages
 import "github.com/JonMunkholm/RevProject1/app/layout"
 
 templ RegisterPage() {
-    @layout.BaseLayout("Create workspace • RevProject", []string{"/assets/css/auth.css", "/assets/css/register.css"}, RegisterContent())
+    @layout.LayoutWithAssets("Create workspace • RevProject", []string{"/assets/css/auth.css", "/assets/css/register.css"}, RegisterContent())
 }
 
 templ RegisterContent() {

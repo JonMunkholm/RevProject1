@@ -38,6 +38,13 @@ FROM ai_document_jobs
 WHERE id = $1
   AND company_id = $2;
 
+-- name: GetNextQueuedAIDocumentJob :one
+SELECT *
+FROM ai_document_jobs
+WHERE status = 'queued'
+ORDER BY created_at ASC
+LIMIT 1;
+
 -- name: ListAIDocumentJobsByCompany :many
 SELECT *
 FROM ai_document_jobs

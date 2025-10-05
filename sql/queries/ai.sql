@@ -5,51 +5,113 @@ INSERT INTO ai_provider_credentials (
     provider_id,
     credential_cipher,
     credential_hash,
-    metadata
+    metadata,
+    label,
+    is_default,
+    last_tested_at
 )
 VALUES (
-    $1,
-    $2,
-    $3,
-    $4,
-    $5,
-    COALESCE($6, '{}'::jsonb)
+    sqlc.arg('company_id'),
+    sqlc.narg('user_id'),
+    sqlc.arg('provider_id'),
+    sqlc.arg('credential_cipher'),
+    sqlc.arg('credential_hash'),
+    COALESCE(sqlc.narg('metadata'), '{}'::jsonb),
+    sqlc.narg('label'),
+    COALESCE(sqlc.narg('is_default'), false),
+    sqlc.narg('last_tested_at')
 )
 RETURNING *;
 
 -- name: UpdateAIProviderCredential :one
 UPDATE ai_provider_credentials
 SET
-    credential_cipher = $3,
-    credential_hash   = $4,
-    metadata          = COALESCE($5, metadata),
+    credential_cipher = COALESCE(sqlc.narg('credential_cipher'), credential_cipher),
+    credential_hash   = COALESCE(sqlc.narg('credential_hash'), credential_hash),
+    metadata          = COALESCE(sqlc.narg('metadata'), metadata),
+    label             = COALESCE(sqlc.narg('label'), label),
+    is_default        = COALESCE(sqlc.narg('is_default'), is_default),
+    last_tested_at    = COALESCE(sqlc.narg('last_tested_at'), last_tested_at),
     updated_at        = now(),
-    rotated_at        = now()
-WHERE company_id = $1
-  AND user_id    = $2
-  AND provider_id = $6
+    rotated_at        = CASE
+        WHEN sqlc.narg('credential_cipher') IS NOT NULL
+             AND sqlc.narg('credential_cipher') IS DISTINCT FROM credential_cipher THEN now()
+        ELSE rotated_at
+    END
+WHERE id = sqlc.arg('id')
 RETURNING *;
 
 -- name: GetAIProviderCredential :one
 SELECT *
 FROM ai_provider_credentials
-WHERE company_id = $1
-  AND user_id    = $2
-  AND provider_id = $3;
+WHERE id = sqlc.arg('id');
 
 -- name: TouchAIProviderCredential :exec
 UPDATE ai_provider_credentials
 SET last_used_at = now(),
     updated_at   = now()
-WHERE company_id = $1
-  AND user_id    = $2
-  AND provider_id = $3;
+WHERE company_id = sqlc.arg('company_id')
+  AND user_id IS NOT DISTINCT FROM sqlc.narg('user_id')
+  AND provider_id = sqlc.arg('provider_id');
+
+-- name: TouchAIProviderCredentialByID :exec
+UPDATE ai_provider_credentials
+SET last_used_at = now(),
+    updated_at   = now()
+WHERE id = sqlc.arg('id');
 
 -- name: DeleteAIProviderCredential :exec
 DELETE FROM ai_provider_credentials
-WHERE company_id = $1
-  AND user_id    = $2
-  AND provider_id = $3;
+WHERE company_id = sqlc.arg('company_id')
+  AND user_id IS NOT DISTINCT FROM sqlc.narg('user_id')
+  AND provider_id = sqlc.arg('provider_id');
+
+-- name: DeleteAIProviderCredentialByID :exec
+DELETE FROM ai_provider_credentials
+WHERE id = sqlc.arg('id');
+
+-- name: ListAIProviderCredentialsByCompany :many
+SELECT *
+FROM ai_provider_credentials
+WHERE company_id = sqlc.arg('company_id')
+ORDER BY provider_id, user_id, is_default DESC, updated_at DESC
+LIMIT sqlc.arg('limit') OFFSET sqlc.arg('offset');
+
+-- name: ListAIProviderCredentialsByScope :many
+SELECT *
+FROM ai_provider_credentials
+WHERE company_id = sqlc.arg('company_id')
+  AND provider_id = sqlc.arg('provider_id')
+  AND (
+    (sqlc.narg('user_id') IS NULL AND user_id IS NULL)
+    OR (sqlc.narg('user_id') IS NOT NULL AND user_id IS NOT DISTINCT FROM sqlc.narg('user_id'))
+  )
+ORDER BY is_default DESC, updated_at DESC, created_at DESC;
+
+-- name: ListAIProviderCredentialsForResolver :many
+SELECT *
+FROM ai_provider_credentials
+WHERE company_id = sqlc.arg('company_id')
+  AND provider_id = sqlc.arg('provider_id')
+  AND (
+    user_id IS NULL OR user_id = sqlc.arg('user_id')
+  )
+ORDER BY
+  CASE WHEN user_id = sqlc.arg('user_id') THEN 0 ELSE 1 END,
+  is_default DESC,
+  updated_at DESC,
+  created_at DESC;
+
+-- name: ClearDefaultAIProviderCredentials :exec
+UPDATE ai_provider_credentials
+SET is_default = false,
+    updated_at = now()
+WHERE company_id = sqlc.arg('company_id')
+  AND provider_id = sqlc.arg('provider_id')
+  AND (
+    (sqlc.narg('user_id') IS NULL AND user_id IS NULL)
+    OR (sqlc.narg('user_id') IS NOT NULL AND user_id IS NOT DISTINCT FROM sqlc.narg('user_id'))
+  );
 
 -- name: UpsertAIUserPreference :one
 INSERT INTO ai_user_preferences (company_id, user_id, provider_id, model, metadata)
@@ -104,3 +166,28 @@ FROM ai_tool_invocations
 WHERE provider_id = $1
   AND created_at BETWEEN $2 AND $3
 ORDER BY created_at DESC;
+
+-- name: InsertAIProviderCredentialEvent :exec
+INSERT INTO ai_provider_credential_events (
+    company_id,
+    user_id,
+    actor_user_id,
+    provider_id,
+    action,
+    metadata_snapshot
+) VALUES (
+    sqlc.arg('company_id'),
+    sqlc.narg('user_id'),
+    sqlc.narg('actor_user_id'),
+    sqlc.arg('provider_id'),
+    sqlc.arg('action'),
+    COALESCE(sqlc.narg('metadata_snapshot'), '{}'::jsonb)
+);
+
+-- name: ListAIProviderCredentialEvents :many
+SELECT *
+FROM ai_provider_credential_events
+WHERE company_id = sqlc.arg('company_id')
+  AND provider_id = sqlc.arg('provider_id')
+ORDER BY created_at DESC
+LIMIT sqlc.arg('limit') OFFSET sqlc.arg('offset');

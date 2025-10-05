@@ -108,6 +108,14 @@ func (s *Store) DeleteMessages(ctx context.Context, sessionID uuid.UUID) error {
 	return s.queries.DeleteAIConversationMessagesForSession(ctx, sessionID)
 }
 
+func (s *Store) GetSession(ctx context.Context, companyID, sessionID uuid.UUID) (conversation.Session, error) {
+	row, err := s.queries.GetAIConversationSession(ctx, database.GetAIConversationSessionParams{ID: sessionID, CompanyID: companyID})
+	if err != nil {
+		return conversation.Session{}, err
+	}
+	return mapSession(row)
+}
+
 func mapSession(row database.AiConversationSession) (conversation.Session, error) {
 	meta, err := decodeJSON(row.Metadata)
 	if err != nil {

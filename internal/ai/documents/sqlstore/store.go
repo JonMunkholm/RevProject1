@@ -96,6 +96,14 @@ func (s *Store) DeleteJob(ctx context.Context, companyID, jobID uuid.UUID) error
 	return s.queries.DeleteAIDocumentJob(ctx, database.DeleteAIDocumentJobParams{ID: jobID, CompanyID: companyID})
 }
 
+func (s *Store) NextQueuedJob(ctx context.Context) (documents.Job, error) {
+	row, err := s.queries.GetNextQueuedAIDocumentJob(ctx)
+	if err != nil {
+		return documents.Job{}, err
+	}
+	return mapJob(row)
+}
+
 func mapJob(row database.AiDocumentJob) (documents.Job, error) {
 	request := map[string]any{}
 	if len(row.Request) > 0 {

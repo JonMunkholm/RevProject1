@@ -17,6 +17,7 @@ type Store interface {
 	GetJob(ctx context.Context, companyID, jobID uuid.UUID) (Job, error)
 	ListJobs(ctx context.Context, companyID uuid.UUID, limit, offset int32) ([]Job, error)
 	DeleteJob(ctx context.Context, companyID, jobID uuid.UUID) error
+	NextQueuedJob(ctx context.Context) (Job, error)
 }
 
 // Job represents a document analysis task.
@@ -94,6 +95,11 @@ func (s *Service) Job(ctx context.Context, companyID, jobID uuid.UUID) (Job, err
 // Jobs lists jobs for the specified company.
 func (s *Service) Jobs(ctx context.Context, companyID uuid.UUID, limit, offset int32) ([]Job, error) {
 	return s.store.ListJobs(ctx, companyID, limit, offset)
+}
+
+// NextQueuedJob retrieves the next job in the queued state across all companies.
+func (s *Service) NextQueuedJob(ctx context.Context) (Job, error) {
+	return s.store.NextQueuedJob(ctx)
 }
 
 // Remove deletes a job and its data.

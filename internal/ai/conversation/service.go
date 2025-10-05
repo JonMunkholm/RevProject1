@@ -19,6 +19,7 @@ type Store interface {
 	InsertMessage(ctx context.Context, params CreateMessageParams) (Message, error)
 	ListMessages(ctx context.Context, sessionID uuid.UUID) ([]Message, error)
 	DeleteMessages(ctx context.Context, sessionID uuid.UUID) error
+	GetSession(ctx context.Context, companyID, sessionID uuid.UUID) (Session, error)
 }
 
 // Session represents a persisted conversation container.
@@ -118,4 +119,8 @@ func (s *Service) ListCompanySessions(ctx context.Context, companyID uuid.UUID, 
 
 func (s *Service) ListSessionMessages(ctx context.Context, sessionID uuid.UUID) ([]Message, error) {
 	return s.store.ListMessages(ctx, sessionID)
+}
+
+func (s *Service) Session(ctx context.Context, companyID, sessionID uuid.UUID) (Session, error) {
+	return s.store.GetSession(ctx, companyID, sessionID)
 }

@@ -14,6 +14,12 @@ INSERT INTO ai_conversation_sessions (
 )
 RETURNING *;
 
+-- name: GetAIConversationSession :one
+SELECT *
+FROM ai_conversation_sessions
+WHERE id = $1
+  AND company_id = $2;
+
 -- name: UpdateAIConversationSessionTitle :exec
 UPDATE ai_conversation_sessions
 SET title = $3,
