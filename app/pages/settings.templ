@@ -2,8 +2,6 @@ package pages
 
 import (
     "fmt"
-    "sort"
-    "strings"
     "time"
 
     "github.com/JonMunkholm/RevProject1/app/layout"
@@ -124,11 +122,7 @@ templ SettingsShell(tabs []SettingsTab, content templ.Component) {
             <nav class="settings-tabs" aria-label="Settings">
                 <ul>
                     for _, tab := range tabs {
-                        class := "settings-tabs__item"
-                        if tab.Active {
-                            class += " settings-tabs__item--active"
-                        }
-                        <li class={class}>
+                        <li class={SettingsTabClass(tab.Active)}>
                             <a href={tab.Path}>{tab.Label}</a>
                         </li>
                     }
@@ -216,22 +210,14 @@ templ SettingsAIContent(props SettingsAIProps) {
             <nav class="ai-settings__providers" aria-label="AI providers">
                 <ul>
                     for _, provider := range props.Providers {
-                        class := "ai-settings__provider"
-                        if provider.ID == props.ActiveProviderID {
-                            class += " ai-settings__provider--active"
-                        }
-                        <li class={class}>
-                            ariaCurrent := ""
-                            if provider.ID == props.ActiveProviderID {
-                                ariaCurrent = "page"
-                            }
+                        <li class={ProviderClasses(provider.ID == props.ActiveProviderID)}>
                             <a
                                 href={fmt.Sprintf("/app/settings/ai?provider=%s", provider.ID)}
                                 hx-get={fmt.Sprintf("/app/settings/ai?provider=%s", provider.ID)}
                                 hx-target="#ai-settings-root"
                                 hx-push-url="true"
                                 hx-swap="outerHTML"
-                                aria-current={ariaCurrent}
+                                aria-current={ProviderAriaCurrent(provider.ID == props.ActiveProviderID)}
                             >
                                 {provider.Label}
                             </a>
@@ -348,11 +334,7 @@ templ SettingsAICredentialForm(props SettingsAIProps) {
                     <input type="radio" name="scope" value="user" checked />
                     My account
                 </label>
-                companyClass := ""
-                if !props.CanManageCompany {
-                    companyClass = "ai-settings__option--disabled"
-                }
-                <label class={companyClass}>
+                <label class={CompanyScopeClasses(props.CanManageCompany)}>
                     <input type="radio" name="scope" value="company" disabled={!props.CanManageCompany} />
                     Entire company
                 </label>
@@ -363,7 +345,7 @@ templ SettingsAICredentialForm(props SettingsAIProps) {
 
             for _, field := range props.ActiveProvider.Fields {
                 <div class="ai-settings__field">
-                    <label for={fmt.Sprintf("provider-field-%s", field.ID)}>{field.Label}</label>
+                    <label for={ProviderFieldID(field)}>{field.Label}</label>
                     @SettingsAIFieldInput(field)
                 </div>
             }
@@ -399,10 +381,9 @@ templ SettingsAICredentialForm(props SettingsAIProps) {
 }
 
 templ SettingsAIFieldInput(field SettingsAIField) {
-    id := fmt.Sprintf("provider-field-%s", field.ID)
     switch field.Type {
     case "select":
-        <select id={id} name={field.ID} required={field.Required}>
+        <select id={ProviderFieldID(field)} name={field.ID} required={field.Required}>
             if len(field.Options) == 0 {
                 <option value="">Select an option</option>
             }
@@ -412,27 +393,19 @@ templ SettingsAIFieldInput(field SettingsAIField) {
         </select>
     case "textarea":
         <textarea
-            id={id}
+            id={ProviderFieldID(field)}
             name={field.ID}
             required={field.Required}
             placeholder={field.Placeholder}
         ></textarea>
     default:
-        inputType := field.Type
-        if inputType == "" {
-            inputType = "text"
-        }
-        autoComplete := "on"
-        if field.Sensitive {
-            autoComplete = "off"
-        }
         <input
-            id={id}
+            id={ProviderFieldID(field)}
             name={field.ID}
-            type={inputType}
+            type={ProviderFieldType(field)}
             required={field.Required}
             placeholder={field.Placeholder}
-            autocomplete={autoComplete}
+            autocomplete={ProviderFieldAutoComplete(field)}
         />
     }
     if field.Description != "" {
@@ -441,35 +414,13 @@ templ SettingsAIFieldInput(field SettingsAIField) {
 }
 
 templ SettingsAINoticeBanner(notice SettingsNotice) {
-    class := "ai-settings__notice"
-    switch notice.Status {
-    case "success":
-        class += " ai-settings__notice--success"
-    case "warning":
-        class += " ai-settings__notice--warning"
-    case "error":
-        class += " ai-settings__notice--error"
-    default:
-        class += " ai-settings__notice--info"
-    }
-    <div class={class} role="status">
+    <div class={NoticeClasses(notice.Status)} role="status">
         {notice.Message}
     </div>
 }
 
 templ SettingsAIStatusBadgeView(status SettingsStatusBadge) {
-    class := "status-badge"
-    switch status.Status {
-    case "ok":
-        class += " status-badge--ok"
-    case "error":
-        class += " status-badge--error"
-    case "warning":
-        class += " status-badge--warning"
-    default:
-        class += " status-badge--loading"
-    }
-    <span id="ai-provider-status" class={class} aria-live="polite">
+    <span id="ai-provider-status" class={StatusBadgeClasses(status.Status)} aria-live="polite">
         <span class="status-badge__dot"></span>
         {status.Message}
     </span>
