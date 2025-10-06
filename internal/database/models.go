@@ -125,6 +125,14 @@ type Company struct {
 	IsActive    bool
 }
 
+type CompanyUserRole struct {
+	CompanyID uuid.UUID
+	UserID    uuid.UUID
+	Role      string
+	CreatedAt time.Time
+	UpdatedAt time.Time
+}
+
 type Contract struct {
 	ID          uuid.UUID
 	CompanyID   uuid.UUID

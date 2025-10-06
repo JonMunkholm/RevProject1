@@ -10,6 +10,7 @@ import (
 	credentialsqlstore "github.com/JonMunkholm/RevProject1/internal/ai/credentials/sqlstore"
 	doc "github.com/JonMunkholm/RevProject1/internal/ai/documents"
 	documentsqlstore "github.com/JonMunkholm/RevProject1/internal/ai/documents/sqlstore"
+	"github.com/JonMunkholm/RevProject1/internal/ai/provider/catalog"
 	"github.com/JonMunkholm/RevProject1/internal/ai/provider/openai"
 	t "github.com/JonMunkholm/RevProject1/internal/ai/tool"
 	"github.com/JonMunkholm/RevProject1/internal/ai/tool/audit"
@@ -44,8 +45,10 @@ type (
 	ToolExecutor        = t.Executor
 	ToolInvocationStore = audit.InvocationStore
 
-	CredentialResolver = cred.Resolver
-	CredentialLogger   = cred.Logger
+	CredentialResolver   = cred.Resolver
+	CredentialLogger     = cred.Logger
+	ProviderCatalogEntry = catalog.Entry
+	ProviderField        = catalog.Field
 
 	ConversationService       = conversation.Service
 	ConversationSession       = conversation.Session
@@ -128,6 +131,12 @@ func NewDocumentSQLStore(q *database.Queries) doc.Store {
 
 func NewToolAuditSQLStore(q *database.Queries) audit.InvocationStore {
 	return toolsqlstore.New(q)
+}
+
+func ProviderCatalog() []ProviderCatalogEntry { return catalog.Catalog() }
+
+func ProviderCatalogEntryByID(id string) (ProviderCatalogEntry, bool) {
+	return catalog.Lookup(id)
 }
 
 // WithSystemAddendum appends a handler-specific system addendum to the metadata map.

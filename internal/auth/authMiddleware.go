@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"errors"
+	"log"
 	"net/http"
 	"strings"
 
@@ -15,9 +16,19 @@ var authContextKey = contextKey{}
 
 // Session holds authenticated user metadata extracted from a JWT.
 type Session struct {
-	UserID    uuid.UUID
-	CompanyID uuid.UUID
-	Role      string
+	UserID       uuid.UUID
+	CompanyID    uuid.UUID
+	CurrentRole  Role
+	Roles        map[uuid.UUID]Role
+	Capabilities Capabilities
+}
+
+func (s Session) RoleFor(companyID uuid.UUID) (Role, bool) {
+	if s.Roles == nil {
+		return RoleUnknown, false
+	}
+	role, ok := s.Roles[companyID]
+	return role, ok
 }
 
 // SessionFromContext retrieves the Session stored by JWTMiddleware.
@@ -62,10 +73,31 @@ func JWTMiddleware(secret string) func(http.Handler) http.Handler {
 				return
 			}
 
+			roleMap := make(map[uuid.UUID]Role, len(claims.Roles))
+			for company, value := range claims.Roles {
+				companyUUID, parseErr := uuid.Parse(company)
+				if parseErr != nil {
+					log.Printf("auth: skipping invalid company id %q in token for user %s", company, userID)
+					continue
+				}
+				roleMap[companyUUID] = ParseRole(value)
+			}
+
+			currentRole := ParseRole(claims.CurrentRole)
+			if raw := strings.TrimSpace(claims.CurrentRole); raw == "" {
+				if role, ok := roleMap[companyID]; ok {
+					currentRole = role
+				} else {
+					currentRole = RoleViewer
+				}
+			}
+
 			session := Session{
-				UserID:    userID,
-				CompanyID: companyID,
-				Role:      claims.Role,
+				UserID:       userID,
+				CompanyID:    companyID,
+				CurrentRole:  currentRole,
+				Roles:        roleMap,
+				Capabilities: capabilitiesForRole(currentRole),
 			}
 
 			ctx := context.WithValue(r.Context(), authContextKey, session)
@@ -122,4 +154,24 @@ func shouldRedirectToLogin(r *http.Request) bool {
 	}
 
 	return false
+}
+
+func capabilitiesForRole(role Role) Capabilities {
+	caps := Capabilities{}
+
+	if role.Meets(RoleViewer) {
+		caps.CanViewCompanySettings = true
+		caps.CanViewProviderCredentials = true
+	}
+
+	if role.Meets(RoleMember) {
+		caps.CanManagePersonalCredentials = true
+	}
+
+	if role.Meets(RoleAdmin) {
+		caps.CanManageCompanyCredentials = true
+		caps.CanManagePersonalCredentials = true
+	}
+
+	return caps
 }

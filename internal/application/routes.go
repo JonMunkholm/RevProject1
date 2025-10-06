@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"github.com/JonMunkholm/RevProject1/app/pages"
+	"github.com/JonMunkholm/RevProject1/internal/ai"
 	"github.com/JonMunkholm/RevProject1/internal/auth"
 	"github.com/JonMunkholm/RevProject1/internal/database"
 	"github.com/JonMunkholm/RevProject1/internal/handler"
@@ -40,6 +41,7 @@ func (a *App) loadRoutes() {
 			r.Get("/review", a.dashboardPage("review"))
 			r.Get("/customers", a.dashboardPage("customers"))
 			r.Get("/products", a.dashboardPage("products"))
+			r.Route("/settings", a.loadSettingsRoutes)
 		})
 
 		r.Route("/api", func(r chi.Router) {
@@ -47,7 +49,10 @@ func (a *App) loadRoutes() {
 			r.Route("/review", a.loadReviewRoutes)
 			r.Route("/companies", a.loadCompanyRoutes)
 			r.Route("/admin", a.loadAdminRoutes)
-			r.Route("/ai", a.loadAIRoutes)
+			r.Route("/ai", func(r chi.Router) {
+				r.Use(auth.RequireCompanyRole(auth.RoleViewer))
+				a.loadAIRoutes(r)
+			})
 		})
 	})
 
@@ -166,6 +171,7 @@ func (a *App) loadAIRoutes(r chi.Router) {
 		CredentialCipher:  a.credentialCipher,
 		CredentialEvents:  a.credentialEvents,
 		CredentialMetrics: a.credentialMetrics,
+		ProviderCatalog:   ai.ProviderCatalog(),
 	}
 
 	r.Post("/conversations", aiHandler.CreateConversation)
@@ -176,9 +182,12 @@ func (a *App) loadAIRoutes(r chi.Router) {
 	r.Post("/documents/jobs", aiHandler.CreateDocumentJob)
 	r.Get("/documents/jobs", aiHandler.ListDocumentJobs)
 	r.Get("/documents/jobs/{jobID}", aiHandler.GetDocumentJob)
+	r.Get("/providers/catalog", aiHandler.ListProviderCatalog)
 	r.Get("/providers", aiHandler.ListProviderCredentials)
+	r.Get("/providers/{providerID}/credentials", aiHandler.ListProviderCredentials)
 	r.Post("/providers", aiHandler.UpsertProviderCredential)
 	r.Post("/providers/test", aiHandler.TestProviderCredential)
+	r.Get("/providers/{providerID}/status", aiHandler.ProviderStatus)
 	r.Get("/providers/{providerID}/events", aiHandler.ListProviderCredentialEvents)
 	r.Post("/providers/{providerID}/credential", aiHandler.UpsertProviderCredential)
 	r.Post("/providers/{providerID}/credential/test", aiHandler.TestProviderCredential)

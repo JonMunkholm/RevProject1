@@ -294,21 +294,40 @@ SELECT id, company_id, user_id, actor_user_id, provider_id, action, metadata_sna
 FROM ai_provider_credential_events
 WHERE company_id = $1
   AND provider_id = $2
+  AND (
+    $3 IS NULL
+    OR action = $3
+  )
+  AND (
+    $4 IS NULL
+    OR ($4 = 'company' AND user_id IS NULL)
+    OR ($4 = 'user' AND user_id IS NOT NULL)
+  )
+  AND (
+    $5 IS NULL
+    OR actor_user_id = $5
+  )
 ORDER BY created_at DESC
-LIMIT $4 OFFSET $3
+LIMIT $7 OFFSET $6
 `
 
 type ListAIProviderCredentialEventsParams struct {
-	CompanyID  uuid.UUID
-	ProviderID string
-	Offset     int32
-	Limit      int32
+	CompanyID   uuid.UUID
+	ProviderID  string
+	Action      interface{}
+	Scope       interface{}
+	ActorUserID interface{}
+	Offset      int32
+	Limit       int32
 }
 
 func (q *Queries) ListAIProviderCredentialEvents(ctx context.Context, arg ListAIProviderCredentialEventsParams) ([]AiProviderCredentialEvent, error) {
 	rows, err := q.db.QueryContext(ctx, listAIProviderCredentialEvents,
 		arg.CompanyID,
 		arg.ProviderID,
+		arg.Action,
+		arg.Scope,
+		arg.ActorUserID,
 		arg.Offset,
 		arg.Limit,
 	)

@@ -1,0 +1,484 @@
+package pages
+
+import (
+    "fmt"
+    "sort"
+    "strings"
+    "time"
+
+    "github.com/JonMunkholm/RevProject1/app/layout"
+)
+
+type SettingsTab struct {
+    ID    string
+    Label string
+    Path  string
+    Active bool
+}
+
+type SettingsAIField struct {
+    ID          string
+    Label       string
+    Type        string
+    Required    bool
+    Sensitive   bool
+    Placeholder string
+    Description string
+    Options     []string
+}
+
+type SettingsAIProvider struct {
+    ID               string
+    Label            string
+    IconURL          string
+    Description      string
+    DocumentationURL string
+    Capabilities     []string
+    Models           []string
+    Fields           []SettingsAIField
+}
+
+type SettingsAIProps struct {
+    Providers             []SettingsAIProvider
+    ActiveProvider        SettingsAIProvider
+    ActiveProviderID      string
+    CanManageCompany      bool
+    CanManagePersonal     bool
+    CanViewCredentials    bool
+    HasProviders          bool
+}
+
+type AICredentialView struct {
+    ID          string
+    Provider    string
+    Scope       string
+    ScopeLabel  string
+    UserID      *string
+    Label       string
+    Fingerprint string
+    IsDefault   bool
+    Metadata    map[string]any
+    UpdatedAt   time.Time
+    LastUsedAt  *time.Time
+    RotatedAt   *time.Time
+}
+
+type AICredentialEventView struct {
+    ID        string
+    Action    string
+    ActorID   *string
+    UserID    *string
+    Metadata  map[string]any
+    CreatedAt time.Time
+}
+
+type SettingsNotice struct {
+    Status  string
+    Message string
+}
+
+type SettingsStatusBadge struct {
+    Status  string
+    Message string
+}
+
+templ SettingsGeneralPage(tabs []SettingsTab) {
+    @layout.LayoutWithAssets(
+        "Settings · General",
+        []string{"/assets/css/settings.css"},
+        SettingsShell(tabs, SettingsGeneralContent()),
+    )
+}
+
+templ SettingsUsersPage(tabs []SettingsTab) {
+    @layout.LayoutWithAssets(
+        "Settings · Users",
+        []string{"/assets/css/settings.css"},
+        SettingsShell(tabs, SettingsUsersContent()),
+    )
+}
+
+templ SettingsAIPage(tabs []SettingsTab, props SettingsAIProps) {
+    @layout.LayoutWithAssets(
+        "Settings · AI",
+        []string{"/assets/css/settings.css"},
+        SettingsShell(tabs, SettingsAIContent(props)),
+    )
+}
+
+templ SettingsWarningPage(tabs []SettingsTab, message string) {
+    @layout.LayoutWithAssets(
+        "Settings",
+        []string{"/assets/css/settings.css"},
+        SettingsShell(tabs, SettingsWarningContent(message)),
+    )
+}
+
+templ SettingsShell(tabs []SettingsTab, content templ.Component) {
+    <div class="settings-page">
+        <header class="settings-page__header">
+            <h1>Workspace settings</h1>
+            <p>Configure workspace-wide preferences, roles, and integrations.</p>
+        </header>
+        if len(tabs) > 0 {
+            <nav class="settings-tabs" aria-label="Settings">
+                <ul>
+                    for _, tab := range tabs {
+                        class := "settings-tabs__item"
+                        if tab.Active {
+                            class += " settings-tabs__item--active"
+                        }
+                        <li class={class}>
+                            <a href={tab.Path}>{tab.Label}</a>
+                        </li>
+                    }
+                </ul>
+            </nav>
+        }
+        <div class="settings-page__content" id="settings-content">
+            @content
+        </div>
+    </div>
+}
+
+templ SettingsGeneralContent() {
+    <section class="settings-card">
+        <h2>Workspace profile</h2>
+        <p class="settings-card__lead">
+            Manage basic workspace metadata such as display name, contact channels, and notification defaults.
+        </p>
+        <div class="settings-card__body">
+            <p>General settings management is coming soon.</p>
+        </div>
+    </section>
+}
+
+templ SettingsUsersContent() {
+    <section class="settings-card">
+        <h2>User management</h2>
+        <p class="settings-card__lead">
+            Manage invitations, roles, and account lifecycle from a consolidated console.
+        </p>
+        <div class="settings-card__body">
+            <p>User administration is coming soon.</p>
+        </div>
+    </section>
+}
+
+templ SettingsWarningContent(message string) {
+    <section class="settings-card settings-card--warning" role="alert">
+        <h2>Access restricted</h2>
+        <p>{message}</p>
+    </section>
+}
+
+templ SettingsAIContent(props SettingsAIProps) {
+    if !props.HasProviders {
+        <section class="settings-card">
+            <h2>AI integrations</h2>
+            <div class="settings-card__body">
+                <p>No AI providers are currently configured for this workspace.</p>
+            </div>
+        </section>
+    } else {
+        <div class="ai-settings" id="ai-settings-root">
+            <header class="ai-settings__header">
+                <div>
+                    <h2>AI provider credentials</h2>
+                    <p>Store and test provider API keys for this workspace. Keys are encrypted at rest. Use company scope to share across users or user scope for personal keys.</p>
+                </div>
+                <div class="ai-settings__status">
+                    <span>Status</span>
+                    <span
+                        id="ai-provider-status"
+                        class="status-badge status-badge--loading"
+                        hx-get={fmt.Sprintf("/api/ai/providers/%s/status", props.ActiveProviderID)}
+                        hx-trigger="load, ai-status-refresh from:body"
+                        hx-target="#ai-provider-status"
+                        hx-swap="outerHTML"
+                        aria-live="polite"
+                    >
+                        <span class="status-badge__dot"></span>
+                        Checking…
+                    </span>
+                    <button
+                        type="button"
+                        class="ai-settings__status-refresh"
+                        hx-get={fmt.Sprintf("/api/ai/providers/%s/status", props.ActiveProviderID)}
+                        hx-target="#ai-provider-status"
+                        hx-swap="outerHTML"
+                    >
+                        Refresh
+                    </button>
+                </div>
+            </header>
+
+            <nav class="ai-settings__providers" aria-label="AI providers">
+                <ul>
+                    for _, provider := range props.Providers {
+                        class := "ai-settings__provider"
+                        if provider.ID == props.ActiveProviderID {
+                            class += " ai-settings__provider--active"
+                        }
+                        <li class={class}>
+                            ariaCurrent := ""
+                            if provider.ID == props.ActiveProviderID {
+                                ariaCurrent = "page"
+                            }
+                            <a
+                                href={fmt.Sprintf("/app/settings/ai?provider=%s", provider.ID)}
+                                hx-get={fmt.Sprintf("/app/settings/ai?provider=%s", provider.ID)}
+                                hx-target="#ai-settings-root"
+                                hx-push-url="true"
+                                hx-swap="outerHTML"
+                                aria-current={ariaCurrent}
+                            >
+                                {provider.Label}
+                            </a>
+                        </li>
+                    }
+                </ul>
+            </nav>
+
+            <section class="ai-settings__provider-info">
+                if props.ActiveProvider.Description != "" {
+                    <p>{props.ActiveProvider.Description}</p>
+                }
+                if props.ActiveProvider.DocumentationURL != "" {
+                    <a class="ai-settings__doc" href={props.ActiveProvider.DocumentationURL} target="_blank" rel="noreferrer">View documentation</a>
+                }
+            </section>
+
+            <div class="ai-settings__body">
+                if props.CanViewCredentials {
+                    if props.CanManageCompany || props.CanManagePersonal {
+                        @SettingsAICredentialForm(props)
+                    } else {
+                        <section class="ai-settings__notice ai-settings__notice--info">
+                            <p>You do not have permission to add or update credentials.</p>
+                        </section>
+                    }
+                }
+
+                <section class="ai-settings__section">
+                    <div id="ai-settings-notice" aria-live="polite"></div>
+                    <div
+                        id="credential-table"
+                        hx-get={fmt.Sprintf("/api/ai/providers/%s/credentials?limit=20", props.ActiveProviderID)}
+                        hx-trigger="load, ai-credentials-refresh from:body"
+                        hx-swap="outerHTML"
+                    >
+                        <div class="ai-settings__placeholder">Loading credentials…</div>
+                    </div>
+                </section>
+
+                <section class="ai-settings__section">
+                    <h3>Credential activity</h3>
+                    <form class="ai-settings__filters">
+                        <label>
+                            <span>Action</span>
+                            <input
+                                type="search"
+                                name="action"
+                                placeholder="create, update, delete…"
+                                hx-get={fmt.Sprintf("/api/ai/providers/%s/events", props.ActiveProviderID)}
+                                hx-target="#credential-events"
+                                hx-include="closest form"
+                                hx-trigger="change delay:300ms, keyup changed delay:500ms"
+                                autocomplete="off"
+                            />
+                        </label>
+                        <label>
+                            <span>Scope</span>
+                            <select
+                                name="scope"
+                                hx-get={fmt.Sprintf("/api/ai/providers/%s/events", props.ActiveProviderID)}
+                                hx-target="#credential-events"
+                                hx-include="closest form"
+                                hx-trigger="change"
+                            >
+                                <option value="">All</option>
+                                <option value="company">Company</option>
+                                <option value="user">User</option>
+                            </select>
+                        </label>
+                        <label>
+                            <span>Actor ID</span>
+                            <input
+                                type="search"
+                                name="actorId"
+                                placeholder="User UUID"
+                                hx-get={fmt.Sprintf("/api/ai/providers/%s/events", props.ActiveProviderID)}
+                                hx-target="#credential-events"
+                                hx-include="closest form"
+                                hx-trigger="change delay:300ms, keyup changed delay:500ms"
+                                autocomplete="off"
+                            />
+                        </label>
+                    </form>
+                    <div
+                        id="credential-events"
+                        class="ai-settings__events"
+                        hx-get={fmt.Sprintf("/api/ai/providers/%s/events?limit=20", props.ActiveProviderID)}
+                        hx-trigger="load, ai-credentials-refresh from:body"
+                        hx-swap="outerHTML"
+                    >
+                        <div class="ai-settings__placeholder">Loading activity…</div>
+                    </div>
+                </section>
+            </div>
+        </div>
+    }
+}
+
+templ SettingsAICredentialForm(props SettingsAIProps) {
+    <section class="ai-settings__section">
+        <h3>Add or update credential</h3>
+        <form
+            class="ai-settings__form"
+            hx-post={fmt.Sprintf("/api/ai/providers/%s/credential", props.ActiveProviderID)}
+            hx-target="#ai-settings-notice"
+            hx-swap="innerHTML"
+            hx-ext="json-enc"
+        >
+            <input type="hidden" name="provider" value={props.ActiveProviderID} />
+            <fieldset class="ai-settings__field ai-settings__field--provider">
+                <legend>Scope</legend>
+                <label>
+                    <input type="radio" name="scope" value="user" checked />
+                    My account
+                </label>
+                companyClass := ""
+                if !props.CanManageCompany {
+                    companyClass = "ai-settings__option--disabled"
+                }
+                <label class={companyClass}>
+                    <input type="radio" name="scope" value="company" disabled={!props.CanManageCompany} />
+                    Entire company
+                </label>
+                if !props.CanManageCompany {
+                    <p class="ai-settings__hint">Company-wide credential requires an admin.</p>
+                }
+            </fieldset>
+
+            for _, field := range props.ActiveProvider.Fields {
+                <div class="ai-settings__field">
+                    <label for={fmt.Sprintf("provider-field-%s", field.ID)}>{field.Label}</label>
+                    @SettingsAIFieldInput(field)
+                </div>
+            }
+
+            <div class="ai-settings__field">
+                <label for="ai-credential-label">Label (optional)</label>
+                <input id="ai-credential-label" name="label" type="text" placeholder="Production key" />
+            </div>
+
+            <div class="ai-settings__field ai-settings__field--inline">
+                <label>
+                    <input type="checkbox" name="makeDefault" />
+                    Make default for this scope
+                </label>
+            </div>
+
+            <div class="ai-settings__actions">
+                <button type="submit" class="ai-settings__button">Save credential</button>
+                <button
+                    type="button"
+                    class="ai-settings__button ai-settings__button--secondary"
+                    hx-post={fmt.Sprintf("/api/ai/providers/%s/credential/test", props.ActiveProviderID)}
+                    hx-include="closest form"
+                    hx-target="#ai-settings-notice"
+                    hx-swap="innerHTML"
+                    hx-ext="json-enc"
+                >
+                    Test
+                </button>
+            </div>
+        </form>
+    </section>
+}
+
+templ SettingsAIFieldInput(field SettingsAIField) {
+    id := fmt.Sprintf("provider-field-%s", field.ID)
+    switch field.Type {
+    case "select":
+        <select id={id} name={field.ID} required={field.Required}>
+            if len(field.Options) == 0 {
+                <option value="">Select an option</option>
+            }
+            for _, option := range field.Options {
+                <option value={option}>{option}</option>
+            }
+        </select>
+    case "textarea":
+        <textarea
+            id={id}
+            name={field.ID}
+            required={field.Required}
+            placeholder={field.Placeholder}
+        ></textarea>
+    default:
+        inputType := field.Type
+        if inputType == "" {
+            inputType = "text"
+        }
+        autoComplete := "on"
+        if field.Sensitive {
+            autoComplete = "off"
+        }
+        <input
+            id={id}
+            name={field.ID}
+            type={inputType}
+            required={field.Required}
+            placeholder={field.Placeholder}
+            autocomplete={autoComplete}
+        />
+    }
+    if field.Description != "" {
+        <p class="ai-settings__hint">{field.Description}</p>
+    }
+}
+
+templ SettingsAINoticeBanner(notice SettingsNotice) {
+    class := "ai-settings__notice"
+    switch notice.Status {
+    case "success":
+        class += " ai-settings__notice--success"
+    case "warning":
+        class += " ai-settings__notice--warning"
+    case "error":
+        class += " ai-settings__notice--error"
+    default:
+        class += " ai-settings__notice--info"
+    }
+    <div class={class} role="status">
+        {notice.Message}
+    </div>
+}
+
+templ SettingsAIStatusBadgeView(status SettingsStatusBadge) {
+    class := "status-badge"
+    switch status.Status {
+    case "ok":
+        class += " status-badge--ok"
+    case "error":
+        class += " status-badge--error"
+    case "warning":
+        class += " status-badge--warning"
+    default:
+        class += " status-badge--loading"
+    }
+    <span id="ai-provider-status" class={class} aria-live="polite">
+        <span class="status-badge__dot"></span>
+        {status.Message}
+    </span>
+}
+
+templ SettingsAINoticePartial(notice SettingsNotice) {
+    @SettingsAINoticeBanner(notice)
+}
+
+templ SettingsAIStatusBadgePartial(status SettingsStatusBadge) {
+    @SettingsAIStatusBadgeView(status)
+}

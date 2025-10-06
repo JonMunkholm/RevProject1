@@ -28,6 +28,22 @@ Table users {
   note: 'Email must be non-blank, unique, and match basic address pattern.'
 }
 
+Table company_user_roles {
+  Company_ID uuid [not null]
+  User_ID uuid [not null]
+  Role text [not null]
+  Created_At timestamp [not null, default: `CURRENT_TIMESTAMP`]
+  Updated_At timestamp [not null, default: `CURRENT_TIMESTAMP`]
+
+  indexes {
+    (Company_ID, User_ID) [pk]
+    (User_ID)
+    (Company_ID)
+  }
+
+  note: 'Role limited to admin, member, or viewer; first company user becomes admin by default.'
+}
+
 Table customers {
   ID uuid [pk, default: `gen_random_uuid()`]
   Customer_Name citext [not null]
@@ -181,3 +197,5 @@ Ref: product_performance_obligations.Product_ID > products.ID [delete: cascade]
 Ref: product_performance_obligations.Performance_Obligations_ID > performance_obligations.ID [delete: cascade]
 Ref: bundle_performance_obligations.Bundle_ID > bundles.ID [delete: cascade]
 Ref: bundle_performance_obligations.Performance_Obligations_ID > performance_obligations.ID [delete: cascade]
+Ref: company_user_roles.Company_ID > companies.ID [delete: cascade]
+Ref: company_user_roles.User_ID > users.ID [delete: cascade]

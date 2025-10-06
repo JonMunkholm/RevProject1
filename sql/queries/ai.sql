@@ -189,5 +189,18 @@ SELECT *
 FROM ai_provider_credential_events
 WHERE company_id = sqlc.arg('company_id')
   AND provider_id = sqlc.arg('provider_id')
+  AND (
+    sqlc.narg('action') IS NULL
+    OR action = sqlc.narg('action')
+  )
+  AND (
+    sqlc.narg('scope') IS NULL
+    OR (sqlc.narg('scope') = 'company' AND user_id IS NULL)
+    OR (sqlc.narg('scope') = 'user' AND user_id IS NOT NULL)
+  )
+  AND (
+    sqlc.narg('actor_user_id') IS NULL
+    OR actor_user_id = sqlc.narg('actor_user_id')
+  )
 ORDER BY created_at DESC
 LIMIT sqlc.arg('limit') OFFSET sqlc.arg('offset');

@@ -154,10 +154,28 @@ func (l *Login) issueSession(w http.ResponseWriter, r *http.Request, user databa
 	accessTokenTTL := l.accessTTL()
 	refreshTokenTTL := l.refreshTTL()
 
+	ctx := r.Context()
+
+	roleRecords, err := l.DB.ListCompanyRolesForUser(ctx, user.ID)
+	if err != nil {
+		return err
+	}
+
+	roles := make(map[uuid.UUID]Role, len(roleRecords))
+	for _, record := range roleRecords {
+		roles[record.CompanyID] = ParseRole(record.Role)
+	}
+
+	currentRole, ok := roles[user.CompanyID]
+	if !ok {
+		currentRole = RoleViewer
+	}
+
 	jwtPayload := JWTreq{
-		UserID:    user.ID,
-		CompanyID: user.CompanyID,
-		Role:      "",
+		UserID:      user.ID,
+		CompanyID:   user.CompanyID,
+		CurrentRole: currentRole,
+		Roles:       roles,
 	}
 
 	accessToken, err := MakeJWT(jwtPayload, l.JWTSecret, accessTokenTTL)

@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"sort"
@@ -32,9 +33,11 @@ const (
 	defaultCredentialEventLimit int32 = 20
 )
 
+var errStatusNotImplemented = errors.New("ai: provider status check not implemented")
+
 type credentialEventStore interface {
 	Insert(ctx context.Context, params database.InsertAIProviderCredentialEventParams) error
-	List(ctx context.Context, companyID uuid.UUID, providerID string, limit, offset int32) ([]database.AiProviderCredentialEvent, error)
+	List(ctx context.Context, companyID uuid.UUID, providerID string, action *string, scope *string, actor uuid.NullUUID, limit, offset int32) ([]database.AiProviderCredentialEvent, error)
 }
 
 // AI exposes HTTP handlers for conversation and document job workflows.
@@ -49,6 +52,8 @@ type AI struct {
 	CredentialCipher  ai.CredentialCipher
 	CredentialEvents  credentialEventStore
 	CredentialMetrics ai.CredentialMetrics
+	ProviderCatalog   []ai.ProviderCatalogEntry
+	providerLookup    map[string]ai.ProviderCatalogEntry
 }
 
 type conversationResponse struct {
@@ -205,9 +210,9 @@ func credentialRecordToPageView(record ai.CredentialRecord) pages.AICredentialVi
 	return view
 }
 
-func credentialEventToResponse(event database.AiProviderCredentialEvent) providerCredentialEventResponse {
+func credentialEventToResponse(event database.AiProviderCredentialEvent, includeSensitive bool) providerCredentialEventResponse {
 	var actorID *string
-	if event.ActorUserID.Valid {
+	if includeSensitive && event.ActorUserID.Valid {
 		id := event.ActorUserID.UUID.String()
 		actorID = &id
 	}
@@ -218,12 +223,17 @@ func credentialEventToResponse(event database.AiProviderCredentialEvent) provide
 		userID = &id
 	}
 
+	meta := decodeEventMetadata(event.MetadataSnapshot)
+	if !includeSensitive {
+		delete(meta, "fingerprint")
+	}
+
 	return providerCredentialEventResponse{
 		ID:        event.ID.String(),
 		Action:    event.Action,
 		ActorID:   actorID,
 		UserID:    userID,
-		Metadata:  decodeEventMetadata(event.MetadataSnapshot),
+		Metadata:  meta,
 		CreatedAt: event.CreatedAt,
 	}
 }
@@ -239,8 +249,8 @@ func decodeEventMetadata(raw json.RawMessage) map[string]any {
 	return out
 }
 
-func credentialEventToPageView(event database.AiProviderCredentialEvent) pages.AICredentialEventView {
-	resp := credentialEventToResponse(event)
+func credentialEventToPageView(event database.AiProviderCredentialEvent, includeSensitive bool) pages.AICredentialEventView {
+	resp := credentialEventToResponse(event, includeSensitive)
 	return pages.AICredentialEventView{
 		ID:        resp.ID,
 		Action:    resp.Action,
@@ -249,6 +259,17 @@ func credentialEventToPageView(event database.AiProviderCredentialEvent) pages.A
 		Metadata:  resp.Metadata,
 		CreatedAt: resp.CreatedAt,
 	}
+}
+
+// ListProviderCatalog returns metadata about supported AI providers.
+func (h *AI) ListProviderCatalog(w http.ResponseWriter, _ *http.Request) {
+	entries := h.ProviderCatalog
+	if len(entries) == 0 {
+		entries = ai.ProviderCatalog()
+	}
+	RespondWithJSON(w, http.StatusOK, struct {
+		Items []ai.ProviderCatalogEntry `json:"items"`
+	}{Items: entries})
 }
 
 // ListProviderCredentials returns credential metadata for the current company.
@@ -264,10 +285,25 @@ func (h *AI) ListProviderCredentials(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if !session.Capabilities.CanViewProviderCredentials {
+		RespondWithError(w, http.StatusForbidden, "insufficient permissions", errors.New("view not permitted"))
+		return
+	}
+
 	limit, offset := paginationParams(r, defaultCredentialLimit)
 	providerFilter := strings.TrimSpace(r.URL.Query().Get("provider"))
+	if providerPath := strings.TrimSpace(chi.URLParam(r, "providerID")); providerPath != "" {
+		providerFilter = providerPath
+	}
 	scopeFilter := strings.TrimSpace(r.URL.Query().Get("scope"))
 	userFilter := strings.TrimSpace(r.URL.Query().Get("userId"))
+
+	if providerFilter != "" {
+		if _, _, err := h.normalizeProvider(providerFilter); err != nil {
+			RespondWithError(w, http.StatusBadRequest, "unknown provider", err)
+			return
+		}
+	}
 
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
@@ -329,23 +365,59 @@ func (h *AI) ListProviderCredentialEvents(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	providerID := strings.TrimSpace(chi.URLParam(r, "providerID"))
+	if !session.Capabilities.CanViewProviderCredentials {
+		RespondWithError(w, http.StatusForbidden, "insufficient permissions", errors.New("view not permitted"))
+		return
+	}
+
+	providerParam := strings.TrimSpace(chi.URLParam(r, "providerID"))
+	providerID, _, err := h.normalizeProvider(providerParam)
+	if err != nil {
+		RespondWithError(w, http.StatusBadRequest, "unknown provider", err)
+		return
+	}
 
 	limit, offset := paginationParams(r, defaultCredentialEventLimit)
+	actionFilter := strings.TrimSpace(r.URL.Query().Get("action"))
+	scopeFilter := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("scope")))
+	if scopeFilter != "" && scopeFilter != "company" && scopeFilter != "user" {
+		RespondWithError(w, http.StatusBadRequest, "invalid scope filter", fmt.Errorf("unsupported scope %q", scopeFilter))
+		return
+	}
+	actorFilter := strings.TrimSpace(r.URL.Query().Get("actorId"))
+
+	var actionPtr *string
+	if actionFilter != "" {
+		actionPtr = &actionFilter
+	}
+	var scopePtr *string
+	if scopeFilter != "" {
+		scopePtr = &scopeFilter
+	}
+	actorUUID := uuid.NullUUID{}
+	if actorFilter != "" {
+		parsed, err := uuid.Parse(actorFilter)
+		if err != nil {
+			RespondWithError(w, http.StatusBadRequest, "invalid actorId", err)
+			return
+		}
+		actorUUID = uuid.NullUUID{UUID: parsed, Valid: true}
+	}
 
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 
-	events, err := h.CredentialEvents.List(ctx, session.CompanyID, providerID, limit, offset)
+	events, err := h.CredentialEvents.List(ctx, session.CompanyID, providerID, actionPtr, scopePtr, actorUUID, limit, offset)
 	if err != nil {
 		RespondWithError(w, http.StatusInternalServerError, "failed to load credential events", err)
 		return
 	}
 
+	includeSensitive := session.Capabilities.CanManageCompanyCredentials
 	if isHTMX(r) {
 		views := make([]pages.AICredentialEventView, 0, len(events))
 		for _, event := range events {
-			views = append(views, credentialEventToPageView(event))
+			views = append(views, credentialEventToPageView(event, includeSensitive))
 		}
 		if err := renderCredentialEvents(r.Context(), w, views); err != nil {
 			RespondWithError(w, http.StatusInternalServerError, "failed to render credential events", err)
@@ -355,27 +427,186 @@ func (h *AI) ListProviderCredentialEvents(w http.ResponseWriter, r *http.Request
 
 	resp := listResponse[providerCredentialEventResponse]{NextOffset: offset + limit}
 	for _, event := range events {
-		resp.Items = append(resp.Items, credentialEventToResponse(event))
+		resp.Items = append(resp.Items, credentialEventToResponse(event, includeSensitive))
 	}
 
 	RespondWithJSON(w, http.StatusOK, resp)
 }
 
-// DeleteProviderCredential removes a credential by identifier.
-func (h *AI) DeleteProviderCredential(w http.ResponseWriter, r *http.Request) {
-	if h == nil || h.CredentialStore == nil {
-		RespondWithError(w, http.StatusInternalServerError, "credentials unavailable", errors.New("credential store not configured"))
+// ProviderStatus performs a lightweight provider ping using stored credentials or the global API key.
+func (h *AI) ProviderStatus(w http.ResponseWriter, r *http.Request) {
+	if h == nil || h.Client == nil {
+		handleProviderStatusError(w, r, http.StatusInternalServerError, "AI client unavailable", errors.New("ai client not configured"))
 		return
 	}
 
 	session, ok := auth.SessionFromContext(r.Context())
 	if !ok {
-		RespondWithError(w, http.StatusUnauthorized, "authentication required", errors.New("session missing"))
+		handleProviderStatusError(w, r, http.StatusUnauthorized, "Authentication required", errors.New("session missing"))
+		return
+	}
+
+	providerParam := chi.URLParam(r, "providerID")
+	providerID, entry, err := h.normalizeProvider(providerParam)
+	if err != nil {
+		handleProviderStatusError(w, r, http.StatusBadRequest, "Unknown provider", err)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+
+	scopeLabel := "company"
+	scopeUser := uuid.NullUUID{}
+	var credentialRecord ai.CredentialRecord
+	var metadata map[string]any
+	var apiKey string
+	var fromCredential bool
+	htmx := isHTMX(r)
+
+	if strings.TrimSpace(h.APIKey) != "" {
+		apiKey = strings.TrimSpace(h.APIKey)
+		scopeLabel = "global"
+	} else {
+		record, userID, scope, found, err := h.selectCredentialForStatus(ctx, session.CompanyID, providerID, session.UserID)
+		if err != nil {
+			handleProviderStatusError(w, r, http.StatusInternalServerError, "Failed to load credentials", err)
+			return
+		}
+		if !found {
+			if h.CredentialMetrics != nil {
+				h.CredentialMetrics.CredentialMissing(session.CompanyID, providerID, scopeLabel)
+			}
+			meta := map[string]any{"status": "missing", "scope": scopeLabel}
+			h.recordCredentialEvent(ctx, session.CompanyID, scopeUser, session.UserID, providerID, "status", meta)
+			if htmx {
+				writeAIStatusBadge(ctx, w, pages.SettingsStatusBadge{Status: "warning", Message: "No credential configured"})
+			} else {
+				RespondWithError(w, http.StatusFailedDependency, "no credential configured", errors.New("credential missing"))
+			}
+			return
+		}
+
+		if h.CredentialCipher == nil {
+			handleProviderStatusError(w, r, http.StatusInternalServerError, "Credential cipher unavailable", errors.New("credential cipher not configured"))
+			return
+		}
+
+		plaintext, err := h.CredentialCipher.Decrypt(ctx, record.CredentialCipher)
+		if err != nil {
+			handleProviderStatusError(w, r, http.StatusInternalServerError, "Failed to decrypt credential", err)
+			return
+		}
+
+		credentialRecord = record
+		metadata = record.Metadata
+		apiKey = strings.TrimSpace(string(plaintext))
+		scopeUser = userID
+		scopeLabel = scope
+		fromCredential = true
+	}
+
+	if apiKey == "" {
+		if h.CredentialMetrics != nil {
+			h.CredentialMetrics.CredentialMissing(session.CompanyID, providerID, scopeLabel)
+		}
+		meta := map[string]any{"status": "missing", "scope": scopeLabel, "reason": "api key empty"}
+		h.recordCredentialEvent(ctx, session.CompanyID, scopeUser, session.UserID, providerID, "status", meta)
+		if htmx {
+			writeAIStatusBadge(ctx, w, pages.SettingsStatusBadge{Status: "warning", Message: "No credential configured"})
+		} else {
+			RespondWithError(w, http.StatusFailedDependency, "no credential configured", errors.New("credential missing"))
+		}
+		return
+	}
+
+	start := time.Now()
+	if err := h.pingProvider(ctx, providerID, entry, apiKey, metadata); err != nil {
+		if errors.Is(err, errStatusNotImplemented) {
+			meta := map[string]any{"status": "skipped", "scope": scopeLabel, "reason": err.Error()}
+			h.recordCredentialEvent(ctx, session.CompanyID, scopeUser, session.UserID, providerID, "status", meta)
+			if htmx {
+				writeAIStatusBadge(ctx, w, pages.SettingsStatusBadge{Status: "warning", Message: "Status check not implemented"})
+			} else {
+				RespondWithError(w, http.StatusNotImplemented, "status check not implemented", err)
+			}
+			return
+		}
+		if h.CredentialMetrics != nil {
+			h.CredentialMetrics.CredentialTestFailure(session.CompanyID, providerID)
+		}
+		meta := map[string]any{"status": "failure", "scope": scopeLabel, "error": err.Error()}
+		if fromCredential {
+			meta["credential_id"] = credentialRecord.ID.String()
+			if credentialRecord.Fingerprint != "" {
+				meta["fingerprint"] = credentialRecord.Fingerprint
+			}
+			if credentialRecord.UserID.Valid {
+				meta["user_id"] = credentialRecord.UserID.UUID.String()
+			}
+		}
+		h.recordCredentialEvent(ctx, session.CompanyID, scopeUser, session.UserID, providerID, "status", meta)
+		if htmx {
+			writeAIStatusBadge(ctx, w, pages.SettingsStatusBadge{Status: "error", Message: "Status check failed"})
+		} else {
+			RespondWithError(w, http.StatusBadGateway, "provider status check failed", err)
+		}
+		return
+	}
+
+	latency := time.Since(start)
+	eventMeta := map[string]any{"status": "success", "scope": scopeLabel, "latency_ms": latency.Milliseconds()}
+	if fromCredential {
+		eventMeta["credential_id"] = credentialRecord.ID.String()
+		if credentialRecord.Fingerprint != "" {
+			eventMeta["fingerprint"] = credentialRecord.Fingerprint
+		}
+		if credentialRecord.UserID.Valid {
+			eventMeta["user_id"] = credentialRecord.UserID.UUID.String()
+		}
+	}
+	h.recordCredentialEvent(ctx, session.CompanyID, scopeUser, session.UserID, providerID, "status", eventMeta)
+
+	if htmx {
+		writeAIStatusBadge(ctx, w, pages.SettingsStatusBadge{Status: "ok", Message: "Connected"})
+		return
+	}
+
+	RespondWithJSON(w, http.StatusOK, map[string]any{
+		"provider":  providerID,
+		"status":    "ok",
+		"scope":     scopeLabel,
+		"latencyMs": latency.Milliseconds(),
+		"checkedAt": time.Now().UTC(),
+	})
+}
+
+// DeleteProviderCredential removes a credential by identifier.
+func (h *AI) DeleteProviderCredential(w http.ResponseWriter, r *http.Request) {
+	if h == nil || h.CredentialStore == nil {
+		err := errors.New("credential store not configured")
+		if respondWithAINotice(w, r, "error", "Credentials unavailable", err) {
+			return
+		}
+		RespondWithError(w, http.StatusInternalServerError, "credentials unavailable", err)
+		return
+	}
+
+	session, ok := auth.SessionFromContext(r.Context())
+	if !ok {
+		err := errors.New("session missing")
+		if respondWithAINotice(w, r, "error", "Authentication required", err) {
+			return
+		}
+		RespondWithError(w, http.StatusUnauthorized, "authentication required", err)
 		return
 	}
 
 	credentialID, err := uuid.Parse(chi.URLParam(r, "credentialID"))
 	if err != nil {
+		if respondWithAINotice(w, r, "error", "Invalid credential id", err) {
+			return
+		}
 		RespondWithError(w, http.StatusBadRequest, "invalid credential id", err)
 		return
 	}
@@ -386,7 +617,13 @@ func (h *AI) DeleteProviderCredential(w http.ResponseWriter, r *http.Request) {
 	record, err := h.CredentialStore.GetCredential(ctx, credentialID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
+			if respondWithAINotice(w, r, "error", "Credential not found", err) {
+				return
+			}
 			RespondWithError(w, http.StatusNotFound, "credential not found", err)
+			return
+		}
+		if respondWithAINotice(w, r, "error", "Failed to load credential", err) {
 			return
 		}
 		RespondWithError(w, http.StatusInternalServerError, "failed to load credential", err)
@@ -394,11 +631,27 @@ func (h *AI) DeleteProviderCredential(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if record.CompanyID != session.CompanyID {
-		RespondWithError(w, http.StatusNotFound, "credential not found", errors.New("credential scope mismatch"))
+		scopeErr := errors.New("credential scope mismatch")
+		if respondWithAINotice(w, r, "error", "Credential not found", scopeErr) {
+			return
+		}
+		RespondWithError(w, http.StatusNotFound, "credential not found", scopeErr)
+		return
+	}
+
+	if ok, msg := canManageCredentialScope(session, record.UserID); !ok {
+		permErr := errors.New("insufficient credential permissions")
+		if respondWithAINotice(w, r, "error", msg, permErr) {
+			return
+		}
+		RespondWithError(w, http.StatusForbidden, "insufficient permissions", permErr)
 		return
 	}
 
 	if err := h.CredentialStore.DeleteCredential(ctx, credentialID); err != nil {
+		if respondWithAINotice(w, r, "error", "Failed to delete credential", err) {
+			return
+		}
 		RespondWithError(w, http.StatusInternalServerError, "failed to delete credential", err)
 		return
 	}
@@ -418,8 +671,7 @@ func (h *AI) DeleteProviderCredential(w http.ResponseWriter, r *http.Request) {
 	h.recordCredentialEvent(ctx, session.CompanyID, record.UserID, session.UserID, record.ProviderID, "delete", eventMeta)
 
 	triggerCredentialRefresh(w)
-	if isHTMX(r) {
-		w.WriteHeader(http.StatusNoContent)
+	if respondWithAINotice(w, r, "success", "Credential deleted", nil) {
 		return
 	}
 
@@ -429,27 +681,45 @@ func (h *AI) DeleteProviderCredential(w http.ResponseWriter, r *http.Request) {
 // TestProviderCredential validates a provider credential without persisting it.
 func (h *AI) TestProviderCredential(w http.ResponseWriter, r *http.Request) {
 	if h == nil {
-		RespondWithError(w, http.StatusInternalServerError, "ai system unavailable", errors.New("ai handler not configured"))
+		err := errors.New("ai handler not configured")
+		if respondWithAINotice(w, r, "error", "AI system unavailable", err) {
+			return
+		}
+		RespondWithError(w, http.StatusInternalServerError, "ai system unavailable", err)
 		return
 	}
 
 	session, ok := auth.SessionFromContext(r.Context())
 	if !ok {
-		RespondWithError(w, http.StatusUnauthorized, "authentication required", errors.New("session missing"))
+		err := errors.New("session missing")
+		if respondWithAINotice(w, r, "error", "Authentication required", err) {
+			return
+		}
+		RespondWithError(w, http.StatusUnauthorized, "authentication required", err)
 		return
 	}
 
-	providerID := strings.TrimSpace(chi.URLParam(r, "providerID"))
-
 	var req upsertProviderCredentialRequest
 	if err := decodeJSON(r, &req); err != nil {
+		if respondWithAINotice(w, r, "error", "Invalid payload", err) {
+			return
+		}
 		RespondWithError(w, http.StatusBadRequest, "invalid payload", err)
 		return
 	}
 	req.Provider = strings.TrimSpace(req.Provider)
 	req.APIKey = strings.TrimSpace(req.APIKey)
-	if providerID == "" {
-		providerID = req.Provider
+	providerCandidate := strings.TrimSpace(chi.URLParam(r, "providerID"))
+	if providerCandidate == "" {
+		providerCandidate = req.Provider
+	}
+	providerID, _, err := h.normalizeProvider(providerCandidate)
+	if err != nil {
+		if respondWithAINotice(w, r, "error", "Unknown provider", err) {
+			return
+		}
+		RespondWithError(w, http.StatusBadRequest, "unknown provider", err)
+		return
 	}
 
 	scopeUser := uuid.NullUUID{UUID: session.UserID, Valid: true}
@@ -492,10 +762,18 @@ func (h *AI) TestProviderCredential(w http.ResponseWriter, r *http.Request) {
 		providerID = record.ProviderID
 		scopeUser = record.UserID
 		scopeLabel = scopeFromUserID(record.UserID)
+
+		if ok, msg := canManageCredentialScope(session, scopeUser); !ok {
+			permErr := errors.New("insufficient credential permissions")
+			h.handleTestFailure(w, r, session, providerID, scopeUser, scopeLabel, http.StatusForbidden, msg, permErr)
+			return
+		}
 	}
 
-	if providerID == "" {
-		providerID = h.DefaultProvider
+	if ok, msg := canManageCredentialScope(session, scopeUser); !ok {
+		permErr := errors.New("insufficient credential permissions")
+		h.handleTestFailure(w, r, session, providerID, scopeUser, scopeLabel, http.StatusForbidden, msg, permErr)
+		return
 	}
 
 	if stored == nil {
@@ -525,8 +803,7 @@ func (h *AI) TestProviderCredential(w http.ResponseWriter, r *http.Request) {
 
 	// TODO: implement provider ping once provider clients support it.
 	triggerCredentialRefresh(w)
-	if isHTMX(r) {
-		w.WriteHeader(http.StatusNoContent)
+	if respondWithAINotice(w, r, "success", "Credential test succeeded", nil) {
 		return
 	}
 
@@ -551,6 +828,9 @@ func (h *AI) handleTestFailure(w http.ResponseWriter, r *http.Request, session a
 		meta["error"] = err.Error()
 	}
 	h.recordCredentialEvent(r.Context(), session.CompanyID, scopeUser, session.UserID, providerID, "test", meta)
+	if respondWithAINotice(w, r, "error", message, err) {
+		return
+	}
 	RespondWithError(w, status, message, err)
 }
 
@@ -955,39 +1235,62 @@ func paginationParams(r *http.Request, fallback int32) (int32, int32) {
 // UpsertProviderCredential stores or replaces a provider credential for the current company/user.
 func (h *AI) UpsertProviderCredential(w http.ResponseWriter, r *http.Request) {
 	if h == nil || h.CredentialStore == nil || h.CredentialCipher == nil {
-		RespondWithError(w, http.StatusInternalServerError, "credentials unavailable", errors.New("credential store not configured"))
+		err := errors.New("credential store not configured")
+		if respondWithAINotice(w, r, "error", "Credentials unavailable", err) {
+			return
+		}
+		RespondWithError(w, http.StatusInternalServerError, "credentials unavailable", err)
 		return
 	}
 
 	session, ok := auth.SessionFromContext(r.Context())
 	if !ok {
-		RespondWithError(w, http.StatusUnauthorized, "authentication required", errors.New("session missing"))
+		err := errors.New("session missing")
+		if respondWithAINotice(w, r, "error", "Authentication required", err) {
+			return
+		}
+		RespondWithError(w, http.StatusUnauthorized, "authentication required", err)
 		return
-	}
-
-	providerID := chi.URLParam(r, "providerID")
-	if providerID == "" {
-		providerID = h.DefaultProvider
 	}
 
 	var req upsertProviderCredentialRequest
 	if err := decodeJSON(r, &req); err != nil {
+		if respondWithAINotice(w, r, "error", "Invalid payload", err) {
+			return
+		}
 		RespondWithError(w, http.StatusBadRequest, "invalid payload", err)
 		return
 	}
 	req.APIKey = strings.TrimSpace(req.APIKey)
-	if req.APIKey == "" {
-		RespondWithError(w, http.StatusBadRequest, "apiKey is required", errors.New("missing api key"))
+	providerCandidate := chi.URLParam(r, "providerID")
+	if providerCandidate == "" {
+		providerCandidate = req.Provider
+	}
+	providerID, _, err := h.normalizeProvider(providerCandidate)
+	if err != nil {
+		if respondWithAINotice(w, r, "error", "Unknown provider", err) {
+			return
+		}
+		RespondWithError(w, http.StatusBadRequest, "unknown provider", err)
 		return
 	}
+	req.Provider = providerID
 
-	if err := validateAPIKeyFormat(providerID, req.APIKey); err != nil {
-		RespondWithError(w, http.StatusBadRequest, "invalid api key", err)
-		return
+	if req.APIKey != "" {
+		if err := validateAPIKeyFormat(providerID, req.APIKey); err != nil {
+			if respondWithAINotice(w, r, "error", "Invalid API key", err) {
+				return
+			}
+			RespondWithError(w, http.StatusBadRequest, "invalid api key", err)
+			return
+		}
 	}
 
 	scopeUser, _, err := resolveCredentialScope(session, req.Scope, req.UserID)
 	if err != nil {
+		if respondWithAINotice(w, r, "error", "Invalid scope", err) {
+			return
+		}
 		RespondWithError(w, http.StatusBadRequest, "invalid scope", err)
 		return
 	}
@@ -1000,6 +1303,15 @@ func (h *AI) UpsertProviderCredential(w http.ResponseWriter, r *http.Request) {
 		metadata["base_url"] = req.BaseURL
 	}
 
+	if ok, msg := canManageCredentialScope(session, scopeUser); !ok {
+		permErr := errors.New("insufficient credential permissions")
+		if respondWithAINotice(w, r, "error", msg, permErr) {
+			return
+		}
+		RespondWithError(w, http.StatusForbidden, "insufficient permissions", permErr)
+		return
+	}
+
 	labelValue := strings.TrimSpace(req.Label)
 	var labelPtr *string
 	if labelValue != "" {
@@ -1009,35 +1321,30 @@ func (h *AI) UpsertProviderCredential(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 
-	ciphertext, err := h.CredentialCipher.Encrypt(ctx, []byte(req.APIKey))
-	if err != nil {
-		RespondWithError(w, http.StatusInternalServerError, "failed to encrypt credential", err)
-		return
-	}
-
-	record := ai.CredentialRecord{
-		CompanyID:        session.CompanyID,
-		UserID:           scopeUser,
-		ProviderID:       providerID,
-		CredentialCipher: ciphertext,
-		CredentialHash:   hashSecret([]byte(req.APIKey)),
-		Metadata:         metadata,
-		Label:            labelPtr,
-		IsDefault:        req.MakeDefault,
-	}
+	var existing ai.CredentialRecord
+	var hasExisting bool
 
 	status := http.StatusCreated
 	if req.CredentialID != "" {
 		credentialID, err := uuid.Parse(req.CredentialID)
 		if err != nil {
+			if respondWithAINotice(w, r, "error", "Invalid credential id", err) {
+				return
+			}
 			RespondWithError(w, http.StatusBadRequest, "invalid credential id", err)
 			return
 		}
 
-		existing, err := h.CredentialStore.GetCredential(ctx, credentialID)
+		existing, err = h.CredentialStore.GetCredential(ctx, credentialID)
 		if err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
+				if respondWithAINotice(w, r, "error", "Credential not found", err) {
+					return
+				}
 				RespondWithError(w, http.StatusNotFound, "credential not found", err)
+				return
+			}
+			if respondWithAINotice(w, r, "error", "Failed to load credential", err) {
 				return
 			}
 			RespondWithError(w, http.StatusInternalServerError, "failed to load credential", err)
@@ -1045,22 +1352,84 @@ func (h *AI) UpsertProviderCredential(w http.ResponseWriter, r *http.Request) {
 		}
 
 		if existing.CompanyID != session.CompanyID || existing.ProviderID != providerID {
-			RespondWithError(w, http.StatusForbidden, "credential scope mismatch", errors.New("credential does not belong to company"))
+			scopeErr := errors.New("credential does not belong to company")
+			if respondWithAINotice(w, r, "error", "Credential scope mismatch", scopeErr) {
+				return
+			}
+			RespondWithError(w, http.StatusForbidden, "credential scope mismatch", scopeErr)
 			return
 		}
 
 		if (existing.UserID.Valid && !scopeUser.Valid) || (!existing.UserID.Valid && scopeUser.Valid) || (existing.UserID.Valid && scopeUser.Valid && existing.UserID.UUID != scopeUser.UUID) {
-			RespondWithError(w, http.StatusBadRequest, "scope cannot be changed on update", errors.New("scope update not supported"))
+			scopeErr := errors.New("scope update not supported")
+			if respondWithAINotice(w, r, "error", "Scope cannot be changed on update", scopeErr) {
+				return
+			}
+			RespondWithError(w, http.StatusBadRequest, "scope cannot be changed on update", scopeErr)
 			return
 		}
 
-		record.ID = credentialID
-		record.UserID = existing.UserID
+		scopeUser = existing.UserID
+		hasExisting = true
 		status = http.StatusOK
+
+		if ok, msg := canManageCredentialScope(session, scopeUser); !ok {
+			permErr := errors.New("insufficient credential permissions")
+			if respondWithAINotice(w, r, "error", msg, permErr) {
+				return
+			}
+			RespondWithError(w, http.StatusForbidden, "insufficient permissions", permErr)
+			return
+		}
+	}
+
+	var credentialCipher []byte
+	var credentialHash []byte
+	switch {
+	case req.APIKey != "":
+		ciphertext, err := h.CredentialCipher.Encrypt(ctx, []byte(req.APIKey))
+		if err != nil {
+			if respondWithAINotice(w, r, "error", "Failed to encrypt credential", err) {
+				return
+			}
+			RespondWithError(w, http.StatusInternalServerError, "failed to encrypt credential", err)
+			return
+		}
+		credentialCipher = ciphertext
+		credentialHash = hashSecret([]byte(req.APIKey))
+	case hasExisting:
+		credentialCipher = append([]byte(nil), existing.CredentialCipher...)
+		credentialHash = append([]byte(nil), existing.CredentialHash...)
+	default:
+		missingErr := errors.New("missing api key")
+		if respondWithAINotice(w, r, "error", "API key is required", missingErr) {
+			return
+		}
+		RespondWithError(w, http.StatusBadRequest, "apiKey is required", missingErr)
+		return
+	}
+
+	record := ai.CredentialRecord{
+		CompanyID:        session.CompanyID,
+		UserID:           scopeUser,
+		ProviderID:       providerID,
+		CredentialCipher: credentialCipher,
+		CredentialHash:   credentialHash,
+		Metadata:         metadata,
+		Label:            labelPtr,
+		IsDefault:        req.MakeDefault,
+	}
+
+	if hasExisting {
+		record.ID = existing.ID
+		record.UserID = existing.UserID
 	}
 
 	if record.IsDefault {
 		if err := h.CredentialStore.ClearDefault(ctx, session.CompanyID, providerID, record.UserID); err != nil {
+			if respondWithAINotice(w, r, "error", "Failed to update default credential", err) {
+				return
+			}
 			RespondWithError(w, http.StatusInternalServerError, "failed to update default credential", err)
 			return
 		}
@@ -1068,6 +1437,9 @@ func (h *AI) UpsertProviderCredential(w http.ResponseWriter, r *http.Request) {
 
 	stored, err := h.CredentialStore.UpsertCredential(ctx, record)
 	if err != nil {
+		if respondWithAINotice(w, r, "error", "Failed to store credential", err) {
+			return
+		}
 		RespondWithError(w, http.StatusInternalServerError, "failed to store credential", err)
 		return
 	}
@@ -1095,8 +1467,11 @@ func (h *AI) UpsertProviderCredential(w http.ResponseWriter, r *http.Request) {
 	h.recordCredentialEvent(ctx, session.CompanyID, stored.UserID, session.UserID, providerID, action, eventMeta)
 
 	triggerCredentialRefresh(w)
-	if isHTMX(r) {
-		w.WriteHeader(http.StatusNoContent)
+	successMessage := "Credential updated"
+	if status == http.StatusCreated {
+		successMessage = "Credential added"
+	}
+	if respondWithAINotice(w, r, "success", successMessage, nil) {
 		return
 	}
 
@@ -1246,6 +1621,188 @@ func cloneMetadata(metadata map[string]any) map[string]any {
 		clone[k] = v
 	}
 	return clone
+}
+
+func (h *AI) catalogEntry(providerID string) (ai.ProviderCatalogEntry, bool) {
+	if h == nil {
+		return ai.ProviderCatalogEntry{}, false
+	}
+	id := strings.TrimSpace(providerID)
+	if id == "" {
+		id = h.DefaultProvider
+	}
+	if h.providerLookup == nil {
+		h.providerLookup = make(map[string]ai.ProviderCatalogEntry, len(h.ProviderCatalog))
+		for _, entry := range h.ProviderCatalog {
+			h.providerLookup[entry.ID] = entry
+		}
+	}
+	entry, ok := h.providerLookup[id]
+	return entry, ok
+}
+
+func (h *AI) normalizeProvider(providerID string) (string, ai.ProviderCatalogEntry, error) {
+	id := strings.TrimSpace(providerID)
+	if id == "" {
+		id = h.DefaultProvider
+	}
+	entry, ok := h.catalogEntry(id)
+	if !ok {
+		return "", ai.ProviderCatalogEntry{}, fmt.Errorf("unknown provider %q", id)
+	}
+	return id, entry, nil
+}
+
+func writeAINotice(ctx context.Context, w http.ResponseWriter, notice pages.SettingsNotice) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	if err := pages.SettingsAINoticePartial(notice).Render(ctx, w); err != nil {
+		log.Printf("ai: failed to render notice: %v", err)
+	}
+}
+
+func writeAIStatusBadge(ctx context.Context, w http.ResponseWriter, badge pages.SettingsStatusBadge) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	if err := pages.SettingsAIStatusBadgePartial(badge).Render(ctx, w); err != nil {
+		log.Printf("ai: failed to render status badge: %v", err)
+	}
+}
+
+func handleProviderStatusError(w http.ResponseWriter, r *http.Request, status int, message string, err error) {
+	if isHTMX(r) {
+		writeAIStatusBadge(r.Context(), w, pages.SettingsStatusBadge{Status: "error", Message: message})
+		if err != nil {
+			log.Printf("ai: provider status error: %v", err)
+		}
+		return
+	}
+	RespondWithError(w, status, message, err)
+}
+
+func respondWithAINotice(w http.ResponseWriter, r *http.Request, status, message string, err error) bool {
+	if isHTMX(r) {
+		if err != nil {
+			log.Printf("ai: credential notice (%s): %v", status, err)
+		}
+		writeAINotice(r.Context(), w, pages.SettingsNotice{Status: status, Message: message})
+		return true
+	}
+	return false
+}
+
+func canManageCredentialScope(session auth.Session, scope uuid.NullUUID) (bool, string) {
+	if scope.Valid {
+		if scope.UUID == session.UserID {
+			if !session.Capabilities.CanManagePersonalCredentials {
+				return false, "You do not have permission to manage personal credentials."
+			}
+		} else {
+			if !session.Capabilities.CanManageCompanyCredentials {
+				return false, "Admin permissions are required to manage another user's credentials."
+			}
+		}
+	} else {
+		if !session.Capabilities.CanManageCompanyCredentials {
+			return false, "Company-wide credential requires an admin."
+		}
+	}
+	return true, ""
+}
+
+func (h *AI) selectCredentialForStatus(ctx context.Context, companyID uuid.UUID, providerID string, preferredUser uuid.UUID) (ai.CredentialRecord, uuid.NullUUID, string, bool, error) {
+	if h == nil || h.CredentialStore == nil {
+		return ai.CredentialRecord{}, uuid.NullUUID{}, "", false, nil
+	}
+
+	selectRecord := func(records []ai.CredentialRecord) (ai.CredentialRecord, bool) {
+		var chosen ai.CredentialRecord
+		for _, record := range records {
+			if record.IsDefault {
+				return record, true
+			}
+			if chosen.ID == uuid.Nil {
+				chosen = record
+			}
+		}
+		if chosen.ID != uuid.Nil {
+			return chosen, true
+		}
+		return ai.CredentialRecord{}, false
+	}
+
+	companyRecords, err := h.CredentialStore.ListProviderCredentials(ctx, companyID, providerID, uuid.NullUUID{})
+	if err != nil {
+		return ai.CredentialRecord{}, uuid.NullUUID{}, "", false, err
+	}
+	if record, ok := selectRecord(companyRecords); ok {
+		return record, uuid.NullUUID{}, "company", true, nil
+	}
+
+	if preferredUser != uuid.Nil {
+		userID := uuid.NullUUID{UUID: preferredUser, Valid: true}
+		userRecords, err := h.CredentialStore.ListProviderCredentials(ctx, companyID, providerID, userID)
+		if err != nil {
+			return ai.CredentialRecord{}, uuid.NullUUID{}, "", false, err
+		}
+		if record, ok := selectRecord(userRecords); ok {
+			return record, userID, "user", true, nil
+		}
+	}
+
+	return ai.CredentialRecord{}, uuid.NullUUID{}, "", false, nil
+}
+
+func metadataString(meta map[string]any, key string) string {
+	if meta == nil {
+		return ""
+	}
+	if value, ok := meta[key]; ok {
+		if str, ok := value.(string); ok {
+			return strings.TrimSpace(str)
+		}
+	}
+	return ""
+}
+
+func (h *AI) pingProvider(ctx context.Context, providerID string, entry ai.ProviderCatalogEntry, apiKey string, metadata map[string]any) error {
+	switch providerID {
+	case "openai":
+		baseURL := metadataString(metadata, "base_url")
+		if baseURL == "" {
+			baseURL = metadataString(metadata, "baseUrl")
+		}
+		return pingOpenAI(ctx, baseURL, apiKey)
+	default:
+		return fmt.Errorf("%w: %s", errStatusNotImplemented, providerID)
+	}
+}
+
+func pingOpenAI(ctx context.Context, baseURL, apiKey string) error {
+	if apiKey == "" {
+		return errors.New("missing api key")
+	}
+	if baseURL == "" {
+		baseURL = "https://api.openai.com/v1"
+	}
+	baseURL = strings.TrimRight(baseURL, "/")
+	url := baseURL + "/models?limit=1"
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Authorization", "Bearer "+apiKey)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		return nil
+	}
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+	return fmt.Errorf("openai status %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
 }
 
 func (h *AI) recordCredentialEvent(ctx context.Context, companyID uuid.UUID, scopeUser uuid.NullUUID, actor uuid.UUID, providerID, action string, metadata map[string]any) {

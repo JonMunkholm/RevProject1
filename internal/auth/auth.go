@@ -17,16 +17,60 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
+type Role string
+
+const (
+	RoleUnknown Role = ""
+	RoleViewer  Role = "viewer"
+	RoleMember  Role = "member"
+	RoleAdmin   Role = "admin"
+)
+
+var roleHierarchy = map[Role]int{
+	RoleViewer: 1,
+	RoleMember: 2,
+	RoleAdmin:  3,
+}
+
+func ParseRole(value string) Role {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case string(RoleAdmin):
+		return RoleAdmin
+	case string(RoleMember):
+		return RoleMember
+	case string(RoleViewer):
+		return RoleViewer
+	default:
+		return RoleViewer
+	}
+}
+
+func (r Role) String() string { return string(r) }
+
+func (r Role) Meets(min Role) bool {
+	rank, ok := roleHierarchy[r]
+	if !ok {
+		return false
+	}
+	required, ok := roleHierarchy[min]
+	if !ok {
+		return true
+	}
+	return rank >= required
+}
+
 type JWTreq struct {
-	UserID    uuid.UUID
-	CompanyID uuid.UUID
-	Role      string
+	UserID      uuid.UUID
+	CompanyID   uuid.UUID
+	CurrentRole Role
+	Roles       map[uuid.UUID]Role
 }
 
 type CustomClaims struct {
 	jwt.RegisteredClaims
-	CompanyID string `json:"companyID"`
-	Role      string `json:"role,omitempty"`
+	CompanyID   string            `json:"companyID"`
+	CurrentRole string            `json:"currentRole,omitempty"`
+	Roles       map[string]string `json:"roles,omitempty"`
 }
 
 type TokenType string
@@ -52,6 +96,14 @@ func CheckPasswordHash(password, hash string) error {
 func MakeJWT(req JWTreq, tokenSecret string, expiresIn time.Duration) (string, error) {
 	signingKey := []byte(tokenSecret)
 
+	roleClaims := make(map[string]string, len(req.Roles))
+	for companyID, role := range req.Roles {
+		if role == RoleUnknown {
+			continue
+		}
+		roleClaims[companyID.String()] = role.String()
+	}
+
 	claims := CustomClaims{
 		RegisteredClaims: jwt.RegisteredClaims{
 			Issuer:    string(TokenTypeAccess),
@@ -59,8 +111,9 @@ func MakeJWT(req JWTreq, tokenSecret string, expiresIn time.Duration) (string, e
 			ExpiresAt: jwt.NewNumericDate(time.Now().UTC().Add(expiresIn)),
 			Subject:   req.UserID.String(),
 		},
-		CompanyID: req.CompanyID.String(),
-		Role:      req.Role,
+		CompanyID:   req.CompanyID.String(),
+		CurrentRole: req.CurrentRole.String(),
+		Roles:       roleClaims,
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
