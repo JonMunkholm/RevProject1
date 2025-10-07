@@ -335,7 +335,7 @@ templ SettingsAICredentialForm(props SettingsAIProps) {
                     My account
                 </label>
                 <label class={CompanyScopeClasses(props.CanManageCompany)}>
-                    <input type="radio" name="scope" value="company" disabled={!props.CanManageCompany} />
+                    <input type="radio" name="scope" value="company" disabled?={!props.CanManageCompany} />
                     Entire company
                 </label>
                 if !props.CanManageCompany {
