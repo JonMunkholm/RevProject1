@@ -2,6 +2,7 @@ package sqlstore
 
 import (
 	"context"
+	"database/sql"
 	"strings"
 	"time"
 
@@ -34,26 +35,23 @@ func (s *EventStore) Insert(ctx context.Context, params database.InsertAIProvide
 }
 
 func (s *EventStore) List(ctx context.Context, companyID uuid.UUID, providerID string, action *string, scope *string, actor uuid.NullUUID, limit, offset int32) ([]database.AiProviderCredentialEvent, error) {
-	var actionArg interface{}
+	var actionArg sql.NullString
 	if action != nil {
 		trimmed := strings.TrimSpace(*action)
 		if trimmed != "" {
-			actionArg = trimmed
+			actionArg = sql.NullString{String: trimmed, Valid: true}
 		}
 	}
 
-	var scopeArg interface{}
+	var scopeArg sql.NullString
 	if scope != nil {
 		s := strings.ToLower(strings.TrimSpace(*scope))
 		if s == "company" || s == "user" {
-			scopeArg = s
+			scopeArg = sql.NullString{String: s, Valid: true}
 		}
 	}
 
-	var actorArg interface{}
-	if actor.Valid {
-		actorArg = actor.UUID
-	}
+	actorArg := actor
 
 	return s.queries.ListAIProviderCredentialEvents(ctx, database.ListAIProviderCredentialEventsParams{
 		CompanyID:   companyID,

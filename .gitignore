@@ -5,6 +5,7 @@ Taskfile.yaml
 .cache/
 # Build artifacts
 bin/
+docs/
 dist/
 tmp/
 coverage/

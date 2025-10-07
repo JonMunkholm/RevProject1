@@ -54,6 +54,7 @@ type AICredentialView struct {
     UserID      *string
     Label       string
     Fingerprint string
+    KeySuffix   string
     IsDefault   bool
     Metadata    map[string]any
     UpdatedAt   time.Time
@@ -325,7 +326,6 @@ templ SettingsAICredentialForm(props SettingsAIProps) {
             hx-post={fmt.Sprintf("/api/ai/providers/%s/credential", props.ActiveProviderID)}
             hx-target="#ai-settings-notice"
             hx-swap="innerHTML"
-            hx-ext="json-enc"
         >
             <input type="hidden" name="provider" value={props.ActiveProviderID} />
             <fieldset class="ai-settings__field ai-settings__field--provider">
@@ -371,7 +371,6 @@ templ SettingsAICredentialForm(props SettingsAIProps) {
                     hx-include="closest form"
                     hx-target="#ai-settings-notice"
                     hx-swap="innerHTML"
-                    hx-ext="json-enc"
                 >
                     Test
                 </button>

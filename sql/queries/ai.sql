@@ -83,8 +83,8 @@ FROM ai_provider_credentials
 WHERE company_id = sqlc.arg('company_id')
   AND provider_id = sqlc.arg('provider_id')
   AND (
-    (sqlc.narg('user_id') IS NULL AND user_id IS NULL)
-    OR (sqlc.narg('user_id') IS NOT NULL AND user_id IS NOT DISTINCT FROM sqlc.narg('user_id'))
+    (sqlc.narg('user_id')::uuid IS NULL AND user_id IS NULL)
+    OR (sqlc.narg('user_id')::uuid IS NOT NULL AND user_id IS NOT DISTINCT FROM sqlc.narg('user_id')::uuid)
   )
 ORDER BY is_default DESC, updated_at DESC, created_at DESC;
 
@@ -109,8 +109,8 @@ SET is_default = false,
 WHERE company_id = sqlc.arg('company_id')
   AND provider_id = sqlc.arg('provider_id')
   AND (
-    (sqlc.narg('user_id') IS NULL AND user_id IS NULL)
-    OR (sqlc.narg('user_id') IS NOT NULL AND user_id IS NOT DISTINCT FROM sqlc.narg('user_id'))
+    (sqlc.narg('user_id')::uuid IS NULL AND user_id IS NULL)
+    OR (sqlc.narg('user_id')::uuid IS NOT NULL AND user_id IS NOT DISTINCT FROM sqlc.narg('user_id')::uuid)
   );
 
 -- name: UpsertAIUserPreference :one
@@ -190,17 +190,17 @@ FROM ai_provider_credential_events
 WHERE company_id = sqlc.arg('company_id')
   AND provider_id = sqlc.arg('provider_id')
   AND (
-    sqlc.narg('action') IS NULL
-    OR action = sqlc.narg('action')
+    sqlc.narg('action')::text IS NULL
+    OR action = sqlc.narg('action')::text
   )
   AND (
-    sqlc.narg('scope') IS NULL
-    OR (sqlc.narg('scope') = 'company' AND user_id IS NULL)
-    OR (sqlc.narg('scope') = 'user' AND user_id IS NOT NULL)
+    sqlc.narg('scope')::text IS NULL
+    OR (sqlc.narg('scope')::text = 'company' AND user_id IS NULL)
+    OR (sqlc.narg('scope')::text = 'user' AND user_id IS NOT NULL)
   )
   AND (
-    sqlc.narg('actor_user_id') IS NULL
-    OR actor_user_id = sqlc.narg('actor_user_id')
+    sqlc.narg('actor_user_id')::uuid IS NULL
+    OR actor_user_id = sqlc.narg('actor_user_id')::uuid
   )
 ORDER BY created_at DESC
 LIMIT sqlc.arg('limit') OFFSET sqlc.arg('offset');

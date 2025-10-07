@@ -21,15 +21,15 @@ SET is_default = false,
 WHERE company_id = $1
   AND provider_id = $2
   AND (
-    ($3 IS NULL AND user_id IS NULL)
-    OR ($3 IS NOT NULL AND user_id IS NOT DISTINCT FROM $3)
+    ($3::uuid IS NULL AND user_id IS NULL)
+    OR ($3::uuid IS NOT NULL AND user_id IS NOT DISTINCT FROM $3::uuid)
   )
 `
 
 type ClearDefaultAIProviderCredentialsParams struct {
 	CompanyID  uuid.UUID
 	ProviderID string
-	UserID     interface{}
+	UserID     uuid.NullUUID
 }
 
 func (q *Queries) ClearDefaultAIProviderCredentials(ctx context.Context, arg ClearDefaultAIProviderCredentialsParams) error {
@@ -295,17 +295,17 @@ FROM ai_provider_credential_events
 WHERE company_id = $1
   AND provider_id = $2
   AND (
-    $3 IS NULL
-    OR action = $3
+    $3::text IS NULL
+    OR action = $3::text
   )
   AND (
-    $4 IS NULL
-    OR ($4 = 'company' AND user_id IS NULL)
-    OR ($4 = 'user' AND user_id IS NOT NULL)
+    $4::text IS NULL
+    OR ($4::text = 'company' AND user_id IS NULL)
+    OR ($4::text = 'user' AND user_id IS NOT NULL)
   )
   AND (
-    $5 IS NULL
-    OR actor_user_id = $5
+    $5::uuid IS NULL
+    OR actor_user_id = $5::uuid
   )
 ORDER BY created_at DESC
 LIMIT $7 OFFSET $6
@@ -314,9 +314,9 @@ LIMIT $7 OFFSET $6
 type ListAIProviderCredentialEventsParams struct {
 	CompanyID   uuid.UUID
 	ProviderID  string
-	Action      interface{}
-	Scope       interface{}
-	ActorUserID interface{}
+	Action      sql.NullString
+	Scope       sql.NullString
+	ActorUserID uuid.NullUUID
 	Offset      int32
 	Limit       int32
 }
@@ -420,8 +420,8 @@ FROM ai_provider_credentials
 WHERE company_id = $1
   AND provider_id = $2
   AND (
-    ($3 IS NULL AND user_id IS NULL)
-    OR ($3 IS NOT NULL AND user_id IS NOT DISTINCT FROM $3)
+    ($3::uuid IS NULL AND user_id IS NULL)
+    OR ($3::uuid IS NOT NULL AND user_id IS NOT DISTINCT FROM $3::uuid)
   )
 ORDER BY is_default DESC, updated_at DESC, created_at DESC
 `
@@ -429,7 +429,7 @@ ORDER BY is_default DESC, updated_at DESC, created_at DESC
 type ListAIProviderCredentialsByScopeParams struct {
 	CompanyID  uuid.UUID
 	ProviderID string
-	UserID     interface{}
+	UserID     uuid.NullUUID
 }
 
 func (q *Queries) ListAIProviderCredentialsByScope(ctx context.Context, arg ListAIProviderCredentialsByScopeParams) ([]AiProviderCredential, error) {

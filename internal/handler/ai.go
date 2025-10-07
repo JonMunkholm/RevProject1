@@ -11,6 +11,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"sort"
 	"strconv"
 	"strings"
@@ -31,6 +32,8 @@ const (
 	defaultJobLimit             int32 = 20
 	defaultCredentialLimit      int32 = 20
 	defaultCredentialEventLimit int32 = 20
+
+	metadataKeyCredentialSuffix = "key_suffix"
 )
 
 var errStatusNotImplemented = errors.New("ai: provider status check not implemented")
@@ -134,6 +137,7 @@ type providerCredentialResponse struct {
 	UpdatedAt   time.Time      `json:"updatedAt"`
 	LastUsedAt  *time.Time     `json:"lastUsedAt,omitempty"`
 	RotatedAt   *time.Time     `json:"rotatedAt,omitempty"`
+	KeySuffix   string         `json:"keySuffix,omitempty"`
 }
 
 type providerCredentialEventResponse struct {
@@ -167,6 +171,11 @@ func credentialRecordToResponse(record ai.CredentialRecord) providerCredentialRe
 		meta = map[string]any{}
 	}
 
+	var keySuffix string
+	if suffix, ok := credentialSuffixFromMetadata(meta); ok {
+		keySuffix = suffix
+	}
+
 	return providerCredentialResponse{
 		ID:          record.ID.String(),
 		ProviderID:  record.ProviderID,
@@ -179,6 +188,7 @@ func credentialRecordToResponse(record ai.CredentialRecord) providerCredentialRe
 		UpdatedAt:   record.UpdatedAt,
 		LastUsedAt:  record.LastUsedAt,
 		RotatedAt:   record.RotatedAt,
+		KeySuffix:   keySuffix,
 	}
 }
 
@@ -191,6 +201,7 @@ func credentialRecordToPageView(record ai.CredentialRecord) pages.AICredentialVi
 		UserID:      resp.UserID,
 		Label:       resp.Label,
 		Fingerprint: resp.Fingerprint,
+		KeySuffix:   resp.KeySuffix,
 		Metadata:    resp.Metadata,
 		UpdatedAt:   resp.UpdatedAt,
 		LastUsedAt:  resp.LastUsedAt,
@@ -315,16 +326,18 @@ func (h *AI) ListProviderCredentials(w http.ResponseWriter, r *http.Request) {
 	)
 
 	if providerFilter != "" {
-		var userID uuid.NullUUID
+		nextOffset = 0
 		if scopeFilter != "" || userFilter != "" {
+			var userID uuid.NullUUID
 			userID, _, err = resolveCredentialScope(session, scopeFilter, userFilter)
 			if err != nil {
 				RespondWithError(w, http.StatusBadRequest, "invalid scope", err)
 				return
 			}
+			records, err = h.CredentialStore.ListProviderCredentials(ctx, session.CompanyID, providerFilter, userID)
+		} else {
+			records, err = h.collectProviderCredentialsForSession(ctx, session, providerFilter)
 		}
-		records, err = h.CredentialStore.ListProviderCredentials(ctx, session.CompanyID, providerFilter, userID)
-		nextOffset = 0
 	} else {
 		records, err = h.CredentialStore.ListCompanyCredentials(ctx, session.CompanyID, limit, offset)
 	}
@@ -699,16 +712,14 @@ func (h *AI) TestProviderCredential(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var req upsertProviderCredentialRequest
-	if err := decodeJSON(r, &req); err != nil {
+	req, err := parseUpsertProviderCredentialRequest(r)
+	if err != nil {
 		if respondWithAINotice(w, r, "error", "Invalid payload", err) {
 			return
 		}
 		RespondWithError(w, http.StatusBadRequest, "invalid payload", err)
 		return
 	}
-	req.Provider = strings.TrimSpace(req.Provider)
-	req.APIKey = strings.TrimSpace(req.APIKey)
 	providerCandidate := strings.TrimSpace(chi.URLParam(r, "providerID"))
 	if providerCandidate == "" {
 		providerCandidate = req.Provider
@@ -1253,15 +1264,14 @@ func (h *AI) UpsertProviderCredential(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var req upsertProviderCredentialRequest
-	if err := decodeJSON(r, &req); err != nil {
+	req, err := parseUpsertProviderCredentialRequest(r)
+	if err != nil {
 		if respondWithAINotice(w, r, "error", "Invalid payload", err) {
 			return
 		}
 		RespondWithError(w, http.StatusBadRequest, "invalid payload", err)
 		return
 	}
-	req.APIKey = strings.TrimSpace(req.APIKey)
 	providerCandidate := chi.URLParam(r, "providerID")
 	if providerCandidate == "" {
 		providerCandidate = req.Provider
@@ -1380,6 +1390,23 @@ func (h *AI) UpsertProviderCredential(w http.ResponseWriter, r *http.Request) {
 			}
 			RespondWithError(w, http.StatusForbidden, "insufficient permissions", permErr)
 			return
+		}
+	}
+
+	if hasExisting {
+		if _, ok := metadata[metadataKeyCredentialSuffix]; !ok {
+			if suffix, ok := credentialSuffixFromMetadata(existing.Metadata); ok {
+				metadata[metadataKeyCredentialSuffix] = suffix
+			}
+		}
+	}
+
+	if req.APIKey != "" {
+		suffix := deriveCredentialSuffix(providerID, req.APIKey)
+		if suffix != "" {
+			metadata[metadataKeyCredentialSuffix] = suffix
+		} else {
+			delete(metadata, metadataKeyCredentialSuffix)
 		}
 	}
 
@@ -1563,10 +1590,47 @@ func resolveCredentialScope(session auth.Session, scope, userIDParam string) (uu
 	}
 }
 
+func (h *AI) collectProviderCredentialsForSession(ctx context.Context, session auth.Session, providerID string) ([]ai.CredentialRecord, error) {
+	companyRecords, err := h.CredentialStore.ListProviderCredentials(ctx, session.CompanyID, providerID, uuid.NullUUID{})
+	if err != nil {
+		return nil, err
+	}
+
+	records := make([]ai.CredentialRecord, 0, len(companyRecords))
+	records = append(records, companyRecords...)
+
+	if session.UserID != uuid.Nil {
+		userScope := uuid.NullUUID{UUID: session.UserID, Valid: true}
+		userRecords, err := h.CredentialStore.ListProviderCredentials(ctx, session.CompanyID, providerID, userScope)
+		if err != nil {
+			return nil, err
+		}
+		records = append(records, userRecords...)
+	}
+
+	sort.SliceStable(records, func(i, j int) bool {
+		iCompany := !records[i].UserID.Valid
+		jCompany := !records[j].UserID.Valid
+		if iCompany != jCompany {
+			return iCompany
+		}
+		if records[i].IsDefault != records[j].IsDefault {
+			return records[i].IsDefault && !records[j].IsDefault
+		}
+		if !records[i].UpdatedAt.Equal(records[j].UpdatedAt) {
+			return records[i].UpdatedAt.After(records[j].UpdatedAt)
+		}
+		return records[i].CreatedAt.After(records[j].CreatedAt)
+	})
+
+	return records, nil
+}
+
 func renderCredentialTable(ctx context.Context, w http.ResponseWriter, views []pages.AICredentialView) error {
 	var buf bytes.Buffer
 	buf.WriteString(`<div id="credential-table">`)
-	if err := pages.AICredentialTable(views).Render(ctx, &buf); err != nil {
+	component := pages.AICredentialTable(views)
+	if err := component.Render(ctx, &buf); err != nil {
 		return err
 	}
 	buf.WriteString(`</div>`)
@@ -1621,6 +1685,40 @@ func cloneMetadata(metadata map[string]any) map[string]any {
 		clone[k] = v
 	}
 	return clone
+}
+
+func credentialSuffixFromMetadata(metadata map[string]any) (string, bool) {
+	if metadata == nil {
+		return "", false
+	}
+	value, ok := metadata[metadataKeyCredentialSuffix]
+	if !ok {
+		return "", false
+	}
+	switch v := value.(type) {
+	case string:
+		v = strings.TrimSpace(v)
+		if v == "" {
+			return "", false
+		}
+		return v, true
+	case fmt.Stringer:
+		text := strings.TrimSpace(v.String())
+		if text == "" {
+			return "", false
+		}
+		return text, true
+	default:
+		return "", false
+	}
+}
+
+func deriveCredentialSuffix(_ string, apiKey string) string {
+	trimmed := strings.TrimSpace(apiKey)
+	if len(trimmed) < 4 {
+		return ""
+	}
+	return trimmed[len(trimmed)-4:]
 }
 
 func (h *AI) catalogEntry(providerID string) (ai.ProviderCatalogEntry, bool) {
@@ -1689,6 +1787,86 @@ func respondWithAINotice(w http.ResponseWriter, r *http.Request, status, message
 		return true
 	}
 	return false
+}
+
+func parseUpsertProviderCredentialRequest(r *http.Request) (upsertProviderCredentialRequest, error) {
+	var req upsertProviderCredentialRequest
+	contentType := strings.TrimSpace(r.Header.Get("Content-Type"))
+	if idx := strings.Index(contentType, ";"); idx >= 0 {
+		contentType = strings.TrimSpace(contentType[:idx])
+	}
+
+	if contentType == "application/json" {
+		if err := decodeJSON(r, &req); err != nil {
+			return upsertProviderCredentialRequest{}, err
+		}
+		req.Provider = strings.TrimSpace(req.Provider)
+		req.APIKey = strings.TrimSpace(req.APIKey)
+		req.Model = strings.TrimSpace(req.Model)
+		req.BaseURL = strings.TrimSpace(req.BaseURL)
+		req.Scope = strings.TrimSpace(req.Scope)
+		req.UserID = strings.TrimSpace(req.UserID)
+		req.Label = strings.TrimSpace(req.Label)
+		req.CredentialID = strings.TrimSpace(req.CredentialID)
+		if req.Metadata == nil {
+			req.Metadata = make(map[string]any)
+		}
+		return req, nil
+	}
+
+	if err := r.ParseForm(); err != nil {
+		return upsertProviderCredentialRequest{}, err
+	}
+
+	form := r.PostForm
+	req.Provider = strings.TrimSpace(formValue(form, "provider"))
+	req.APIKey = strings.TrimSpace(formValue(form, "apiKey"))
+	req.Model = strings.TrimSpace(formValue(form, "model"))
+	req.BaseURL = strings.TrimSpace(firstNonEmpty(form, "baseUrl", "base_url"))
+	req.Scope = strings.TrimSpace(formValue(form, "scope"))
+	req.UserID = strings.TrimSpace(formValue(form, "userId"))
+	req.Label = strings.TrimSpace(formValue(form, "label"))
+	req.CredentialID = strings.TrimSpace(formValue(form, "credentialId"))
+	req.MakeDefault = formValue(form, "makeDefault") != ""
+	req.Metadata = make(map[string]any)
+
+	skip := map[string]struct{}{
+		"provider":     {},
+		"apiKey":       {},
+		"model":        {},
+		"baseUrl":      {},
+		"base_url":     {},
+		"scope":        {},
+		"userId":       {},
+		"label":        {},
+		"makeDefault":  {},
+		"credentialId": {},
+	}
+
+	for key, values := range form {
+		if _, ok := skip[key]; ok {
+			continue
+		}
+		if len(values) == 0 {
+			continue
+		}
+		req.Metadata[key] = values[len(values)-1]
+	}
+
+	return req, nil
+}
+
+func formValue(values url.Values, key string) string {
+	return strings.TrimSpace(values.Get(key))
+}
+
+func firstNonEmpty(values url.Values, keys ...string) string {
+	for _, key := range keys {
+		if v := strings.TrimSpace(values.Get(key)); v != "" {
+			return v
+		}
+	}
+	return ""
 }
 
 func canManageCredentialScope(session auth.Session, scope uuid.NullUUID) (bool, string) {

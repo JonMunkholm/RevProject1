@@ -62,6 +62,7 @@ type AICredentialView struct {
 	UserID      *string
 	Label       string
 	Fingerprint string
+	KeySuffix   string
 	IsDefault   bool
 	Metadata    map[string]any
 	UpdatedAt   time.Time
@@ -276,7 +277,7 @@ func SettingsShell(tabs []SettingsTab, content templ.Component) templ.Component 
 				var templ_7745c5c3_Var8 templ.SafeURL
 				templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.JoinURLErrs(tab.Path)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `app/pages/settings.templ`, Line: 126, Col: 45}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `app/pages/settings.templ`, Line: 127, Col: 45}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var8))
 				if templ_7745c5c3_Err != nil {
@@ -289,7 +290,7 @@ func SettingsShell(tabs []SettingsTab, content templ.Component) templ.Component 
 				var templ_7745c5c3_Var9 string
 				templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.JoinStringErrs(tab.Label)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `app/pages/settings.templ`, Line: 126, Col: 57}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `app/pages/settings.templ`, Line: 127, Col: 57}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var9))
 				if templ_7745c5c3_Err != nil {
@@ -407,7 +408,7 @@ func SettingsWarningContent(message string) templ.Component {
 		var templ_7745c5c3_Var13 string
 		templ_7745c5c3_Var13, templ_7745c5c3_Err = templ.JoinStringErrs(message)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `app/pages/settings.templ`, Line: 165, Col: 19}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `app/pages/settings.templ`, Line: 166, Col: 19}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var13))
 		if templ_7745c5c3_Err != nil {
@@ -455,7 +456,7 @@ func SettingsAIContent(props SettingsAIProps) templ.Component {
 			var templ_7745c5c3_Var15 string
 			templ_7745c5c3_Var15, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("/api/ai/providers/%s/status", props.ActiveProviderID))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `app/pages/settings.templ`, Line: 189, Col: 98}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `app/pages/settings.templ`, Line: 190, Col: 98}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var15))
 			if templ_7745c5c3_Err != nil {
@@ -468,7 +469,7 @@ func SettingsAIContent(props SettingsAIProps) templ.Component {
 			var templ_7745c5c3_Var16 string
 			templ_7745c5c3_Var16, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("/api/ai/providers/%s/status", props.ActiveProviderID))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `app/pages/settings.templ`, Line: 201, Col: 98}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `app/pages/settings.templ`, Line: 202, Col: 98}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var16))
 			if templ_7745c5c3_Err != nil {
@@ -504,7 +505,7 @@ func SettingsAIContent(props SettingsAIProps) templ.Component {
 				var templ_7745c5c3_Var19 templ.SafeURL
 				templ_7745c5c3_Var19, templ_7745c5c3_Err = templ.JoinURLErrs(fmt.Sprintf("/app/settings/ai?provider=%s", provider.ID))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `app/pages/settings.templ`, Line: 215, Col: 94}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `app/pages/settings.templ`, Line: 216, Col: 94}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var19))
 				if templ_7745c5c3_Err != nil {
@@ -517,7 +518,7 @@ func SettingsAIContent(props SettingsAIProps) templ.Component {
 				var templ_7745c5c3_Var20 string
 				templ_7745c5c3_Var20, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("/app/settings/ai?provider=%s", provider.ID))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `app/pages/settings.templ`, Line: 216, Col: 96}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `app/pages/settings.templ`, Line: 217, Col: 96}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var20))
 				if templ_7745c5c3_Err != nil {
@@ -530,7 +531,7 @@ func SettingsAIContent(props SettingsAIProps) templ.Component {
 				var templ_7745c5c3_Var21 string
 				templ_7745c5c3_Var21, templ_7745c5c3_Err = templ.JoinStringErrs(ProviderAriaCurrent(provider.ID == props.ActiveProviderID))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `app/pages/settings.templ`, Line: 220, Col: 104}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `app/pages/settings.templ`, Line: 221, Col: 104}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var21))
 				if templ_7745c5c3_Err != nil {
@@ -543,7 +544,7 @@ func SettingsAIContent(props SettingsAIProps) templ.Component {
 				var templ_7745c5c3_Var22 string
 				templ_7745c5c3_Var22, templ_7745c5c3_Err = templ.JoinStringErrs(provider.Label)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `app/pages/settings.templ`, Line: 222, Col: 47}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `app/pages/settings.templ`, Line: 223, Col: 47}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var22))
 				if templ_7745c5c3_Err != nil {
@@ -566,7 +567,7 @@ func SettingsAIContent(props SettingsAIProps) templ.Component {
 				var templ_7745c5c3_Var23 string
 				templ_7745c5c3_Var23, templ_7745c5c3_Err = templ.JoinStringErrs(props.ActiveProvider.Description)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `app/pages/settings.templ`, Line: 231, Col: 56}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `app/pages/settings.templ`, Line: 232, Col: 56}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var23))
 				if templ_7745c5c3_Err != nil {
@@ -585,7 +586,7 @@ func SettingsAIContent(props SettingsAIProps) templ.Component {
 				var templ_7745c5c3_Var24 templ.SafeURL
 				templ_7745c5c3_Var24, templ_7745c5c3_Err = templ.JoinURLErrs(props.ActiveProvider.DocumentationURL)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `app/pages/settings.templ`, Line: 234, Col: 91}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `app/pages/settings.templ`, Line: 235, Col: 91}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var24))
 				if templ_7745c5c3_Err != nil {
@@ -620,7 +621,7 @@ func SettingsAIContent(props SettingsAIProps) templ.Component {
 			var templ_7745c5c3_Var25 string
 			templ_7745c5c3_Var25, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("/api/ai/providers/%s/credentials?limit=20", props.ActiveProviderID))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `app/pages/settings.templ`, Line: 253, Col: 112}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `app/pages/settings.templ`, Line: 254, Col: 112}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var25))
 			if templ_7745c5c3_Err != nil {
@@ -633,7 +634,7 @@ func SettingsAIContent(props SettingsAIProps) templ.Component {
 			var templ_7745c5c3_Var26 string
 			templ_7745c5c3_Var26, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("/api/ai/providers/%s/events", props.ActiveProviderID))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `app/pages/settings.templ`, Line: 270, Col: 106}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `app/pages/settings.templ`, Line: 271, Col: 106}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var26))
 			if templ_7745c5c3_Err != nil {
@@ -646,7 +647,7 @@ func SettingsAIContent(props SettingsAIProps) templ.Component {
 			var templ_7745c5c3_Var27 string
 			templ_7745c5c3_Var27, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("/api/ai/providers/%s/events", props.ActiveProviderID))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `app/pages/settings.templ`, Line: 281, Col: 106}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `app/pages/settings.templ`, Line: 282, Col: 106}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var27))
 			if templ_7745c5c3_Err != nil {
@@ -659,7 +660,7 @@ func SettingsAIContent(props SettingsAIProps) templ.Component {
 			var templ_7745c5c3_Var28 string
 			templ_7745c5c3_Var28, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("/api/ai/providers/%s/events", props.ActiveProviderID))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `app/pages/settings.templ`, Line: 297, Col: 106}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `app/pages/settings.templ`, Line: 298, Col: 106}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var28))
 			if templ_7745c5c3_Err != nil {
@@ -672,7 +673,7 @@ func SettingsAIContent(props SettingsAIProps) templ.Component {
 			var templ_7745c5c3_Var29 string
 			templ_7745c5c3_Var29, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("/api/ai/providers/%s/events?limit=20", props.ActiveProviderID))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `app/pages/settings.templ`, Line: 308, Col: 107}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `app/pages/settings.templ`, Line: 309, Col: 107}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var29))
 			if templ_7745c5c3_Err != nil {
@@ -715,13 +716,13 @@ func SettingsAICredentialForm(props SettingsAIProps) templ.Component {
 		var templ_7745c5c3_Var31 string
 		templ_7745c5c3_Var31, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("/api/ai/providers/%s/credential", props.ActiveProviderID))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `app/pages/settings.templ`, Line: 325, Col: 91}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `app/pages/settings.templ`, Line: 326, Col: 91}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var31))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 38, "\" hx-target=\"#ai-settings-notice\" hx-swap=\"innerHTML\" hx-ext=\"json-enc\"><input type=\"hidden\" name=\"provider\" value=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 38, "\" hx-target=\"#ai-settings-notice\" hx-swap=\"innerHTML\"><input type=\"hidden\" name=\"provider\" value=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -836,7 +837,7 @@ func SettingsAICredentialForm(props SettingsAIProps) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 50, "\" hx-include=\"closest form\" hx-target=\"#ai-settings-notice\" hx-swap=\"innerHTML\" hx-ext=\"json-enc\">Test</button></div></form></section>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 50, "\" hx-include=\"closest form\" hx-target=\"#ai-settings-notice\" hx-swap=\"innerHTML\">Test</button></div></form></section>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -874,7 +875,7 @@ func SettingsAIFieldInput(field SettingsAIField) templ.Component {
 			var templ_7745c5c3_Var40 string
 			templ_7745c5c3_Var40, templ_7745c5c3_Err = templ.JoinStringErrs(ProviderFieldID(field))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `app/pages/settings.templ`, Line: 386, Col: 42}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `app/pages/settings.templ`, Line: 385, Col: 42}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var40))
 			if templ_7745c5c3_Err != nil {
@@ -887,7 +888,7 @@ func SettingsAIFieldInput(field SettingsAIField) templ.Component {
 			var templ_7745c5c3_Var41 string
 			templ_7745c5c3_Var41, templ_7745c5c3_Err = templ.JoinStringErrs(field.ID)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `app/pages/settings.templ`, Line: 386, Col: 58}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `app/pages/settings.templ`, Line: 385, Col: 58}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var41))
 			if templ_7745c5c3_Err != nil {
@@ -900,7 +901,7 @@ func SettingsAIFieldInput(field SettingsAIField) templ.Component {
 			var templ_7745c5c3_Var42 string
 			templ_7745c5c3_Var42, templ_7745c5c3_Err = templ.JoinStringErrs(field.Required)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `app/pages/settings.templ`, Line: 386, Col: 84}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `app/pages/settings.templ`, Line: 385, Col: 84}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var42))
 			if templ_7745c5c3_Err != nil {
@@ -924,7 +925,7 @@ func SettingsAIFieldInput(field SettingsAIField) templ.Component {
 				var templ_7745c5c3_Var43 string
 				templ_7745c5c3_Var43, templ_7745c5c3_Err = templ.JoinStringErrs(option)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `app/pages/settings.templ`, Line: 391, Col: 37}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `app/pages/settings.templ`, Line: 390, Col: 37}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var43))
 				if templ_7745c5c3_Err != nil {
@@ -937,7 +938,7 @@ func SettingsAIFieldInput(field SettingsAIField) templ.Component {
 				var templ_7745c5c3_Var44 string
 				templ_7745c5c3_Var44, templ_7745c5c3_Err = templ.JoinStringErrs(option)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `app/pages/settings.templ`, Line: 391, Col: 46}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `app/pages/settings.templ`, Line: 390, Col: 46}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var44))
 				if templ_7745c5c3_Err != nil {
@@ -960,7 +961,7 @@ func SettingsAIFieldInput(field SettingsAIField) templ.Component {
 			var templ_7745c5c3_Var45 string
 			templ_7745c5c3_Var45, templ_7745c5c3_Err = templ.JoinStringErrs(ProviderFieldID(field))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `app/pages/settings.templ`, Line: 396, Col: 38}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `app/pages/settings.templ`, Line: 395, Col: 38}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var45))
 			if templ_7745c5c3_Err != nil {
@@ -973,7 +974,7 @@ func SettingsAIFieldInput(field SettingsAIField) templ.Component {
 			var templ_7745c5c3_Var46 string
 			templ_7745c5c3_Var46, templ_7745c5c3_Err = templ.JoinStringErrs(field.ID)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `app/pages/settings.templ`, Line: 397, Col: 26}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `app/pages/settings.templ`, Line: 396, Col: 26}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var46))
 			if templ_7745c5c3_Err != nil {
@@ -986,7 +987,7 @@ func SettingsAIFieldInput(field SettingsAIField) templ.Component {
 			var templ_7745c5c3_Var47 string
 			templ_7745c5c3_Var47, templ_7745c5c3_Err = templ.JoinStringErrs(field.Required)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `app/pages/settings.templ`, Line: 398, Col: 36}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `app/pages/settings.templ`, Line: 397, Col: 36}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var47))
 			if templ_7745c5c3_Err != nil {
@@ -999,7 +1000,7 @@ func SettingsAIFieldInput(field SettingsAIField) templ.Component {
 			var templ_7745c5c3_Var48 string
 			templ_7745c5c3_Var48, templ_7745c5c3_Err = templ.JoinStringErrs(field.Placeholder)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `app/pages/settings.templ`, Line: 399, Col: 42}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `app/pages/settings.templ`, Line: 398, Col: 42}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var48))
 			if templ_7745c5c3_Err != nil {
@@ -1017,7 +1018,7 @@ func SettingsAIFieldInput(field SettingsAIField) templ.Component {
 			var templ_7745c5c3_Var49 string
 			templ_7745c5c3_Var49, templ_7745c5c3_Err = templ.JoinStringErrs(ProviderFieldID(field))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `app/pages/settings.templ`, Line: 403, Col: 38}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `app/pages/settings.templ`, Line: 402, Col: 38}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var49))
 			if templ_7745c5c3_Err != nil {
@@ -1030,7 +1031,7 @@ func SettingsAIFieldInput(field SettingsAIField) templ.Component {
 			var templ_7745c5c3_Var50 string
 			templ_7745c5c3_Var50, templ_7745c5c3_Err = templ.JoinStringErrs(field.ID)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `app/pages/settings.templ`, Line: 404, Col: 26}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `app/pages/settings.templ`, Line: 403, Col: 26}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var50))
 			if templ_7745c5c3_Err != nil {
@@ -1043,7 +1044,7 @@ func SettingsAIFieldInput(field SettingsAIField) templ.Component {
 			var templ_7745c5c3_Var51 string
 			templ_7745c5c3_Var51, templ_7745c5c3_Err = templ.JoinStringErrs(ProviderFieldType(field))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `app/pages/settings.templ`, Line: 405, Col: 42}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `app/pages/settings.templ`, Line: 404, Col: 42}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var51))
 			if templ_7745c5c3_Err != nil {
@@ -1056,7 +1057,7 @@ func SettingsAIFieldInput(field SettingsAIField) templ.Component {
 			var templ_7745c5c3_Var52 string
 			templ_7745c5c3_Var52, templ_7745c5c3_Err = templ.JoinStringErrs(field.Required)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `app/pages/settings.templ`, Line: 406, Col: 36}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `app/pages/settings.templ`, Line: 405, Col: 36}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var52))
 			if templ_7745c5c3_Err != nil {
@@ -1069,7 +1070,7 @@ func SettingsAIFieldInput(field SettingsAIField) templ.Component {
 			var templ_7745c5c3_Var53 string
 			templ_7745c5c3_Var53, templ_7745c5c3_Err = templ.JoinStringErrs(field.Placeholder)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `app/pages/settings.templ`, Line: 407, Col: 42}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `app/pages/settings.templ`, Line: 406, Col: 42}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var53))
 			if templ_7745c5c3_Err != nil {
@@ -1082,7 +1083,7 @@ func SettingsAIFieldInput(field SettingsAIField) templ.Component {
 			var templ_7745c5c3_Var54 string
 			templ_7745c5c3_Var54, templ_7745c5c3_Err = templ.JoinStringErrs(ProviderFieldAutoComplete(field))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `app/pages/settings.templ`, Line: 408, Col: 58}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `app/pages/settings.templ`, Line: 407, Col: 58}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var54))
 			if templ_7745c5c3_Err != nil {
@@ -1101,7 +1102,7 @@ func SettingsAIFieldInput(field SettingsAIField) templ.Component {
 			var templ_7745c5c3_Var55 string
 			templ_7745c5c3_Var55, templ_7745c5c3_Err = templ.JoinStringErrs(field.Description)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `app/pages/settings.templ`, Line: 412, Col: 55}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `app/pages/settings.templ`, Line: 411, Col: 55}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var55))
 			if templ_7745c5c3_Err != nil {
@@ -1162,7 +1163,7 @@ func SettingsAINoticeBanner(notice SettingsNotice) templ.Component {
 		var templ_7745c5c3_Var59 string
 		templ_7745c5c3_Var59, templ_7745c5c3_Err = templ.JoinStringErrs(notice.Message)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `app/pages/settings.templ`, Line: 418, Col: 23}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `app/pages/settings.templ`, Line: 417, Col: 23}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var59))
 		if templ_7745c5c3_Err != nil {
@@ -1222,7 +1223,7 @@ func SettingsAIStatusBadgeView(status SettingsStatusBadge) templ.Component {
 		var templ_7745c5c3_Var63 string
 		templ_7745c5c3_Var63, templ_7745c5c3_Err = templ.JoinStringErrs(status.Message)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `app/pages/settings.templ`, Line: 425, Col: 23}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `app/pages/settings.templ`, Line: 424, Col: 23}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var63))
 		if templ_7745c5c3_Err != nil {

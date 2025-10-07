@@ -26,7 +26,7 @@ func (s *Store) ResolveCredential(ctx context.Context, companyID uuid.UUID, user
 	rows, err := s.queries.ListAIProviderCredentialsForResolver(ctx, database.ListAIProviderCredentialsForResolverParams{
 		CompanyID:  companyID,
 		ProviderID: providerID,
-		UserID:     userID,
+		UserID:     toNullUUID(userID),
 	})
 	if err != nil {
 		return dbresolver.Record{}, err
@@ -109,7 +109,7 @@ func (s *Store) ListProviderCredentials(ctx context.Context, companyID uuid.UUID
 	rows, err := s.queries.ListAIProviderCredentialsByScope(ctx, database.ListAIProviderCredentialsByScopeParams{
 		CompanyID:  companyID,
 		ProviderID: providerID,
-		UserID:     nullableInterface(userID),
+		UserID:     toNullUUID(userID),
 	})
 	if err != nil {
 		return nil, err
@@ -127,7 +127,7 @@ func (s *Store) ClearDefault(ctx context.Context, companyID uuid.UUID, providerI
 	return s.queries.ClearDefaultAIProviderCredentials(ctx, database.ClearDefaultAIProviderCredentialsParams{
 		CompanyID:  companyID,
 		ProviderID: providerID,
-		UserID:     nullableInterface(userID),
+		UserID:     toNullUUID(userID),
 	})
 }
 
@@ -240,9 +240,9 @@ func toNullTime(value *time.Time) sql.NullTime {
 	return sql.NullTime{Time: *value, Valid: true}
 }
 
-func nullableInterface(value uuid.NullUUID) interface{} {
+func toNullUUID(value uuid.NullUUID) uuid.NullUUID {
 	if !value.Valid {
-		return nil
+		return uuid.NullUUID{}
 	}
 	return value
 }
