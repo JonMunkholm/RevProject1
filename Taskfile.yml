@@ -1,37 +1,77 @@
-version: 3
+# Taskfile.yml — Embedding System Ops (Go 1.24, Postgres, sqlc, goose, pgvector)
+version: "3"
+
+vars:
+  DB_DSN: "{{.DB_DSN | default .ENV.DB_DSN}}"
+
+env:
+  GOFLAGS: "-buildvcs=false"
 
 tasks:
+  init:
+    desc: First-time setup (sqlc, goose check)
+    cmds:
+      - go version
+      - sqlc version
+      - goose -version
 
   fmt:
-    desc: "Format all Go code"
+    desc: Format & tidy
     cmds:
       - go fmt ./...
-
-  vet:
-    desc: "Static analysis of Go code"
-    cmds:
       - go vet ./...
-
-  test:
-    desc: "Run all Go tests with coverage"
-    cmds:
-      - go test ./... -cover
-
-  tidy:
-    desc: "Clean up and sync Go modules"
-    cmds:
       - go mod tidy
 
-  clean:
-    desc: "Remove caches and build artifacts"
+  sqlc:
+    desc: Generate sqlc code
     cmds:
-      - go clean -modcache -testcache
-      - rm -rf ./bin ./dist || true
+      - sqlc generate
 
-  check-all:
-    desc: "Run fmt, vet, test, and tidy in sequence"
+  migrate:status:
+    desc: Show migration status
+    cmds:
+      - goose -dir db/migrations postgres "{{.DB_DSN}}" status
+
+  migrate:up:
+    desc: Apply migrations
+    cmds:
+      - goose -dir db/migrations postgres "{{.DB_DSN}}" up
+
+  migrate:down1:
+    desc: Rollback last migration
+    cmds:
+      - goose -dir db/migrations postgres "{{.DB_DSN}}" down
+
+  test:
+    desc: Run unit tests
+    cmds:
+      - go test ./... -count=1
+
+  # --- Embedding-specific workflow ------------------------------------------
+  gold:seed:
+    desc: Seed gold test cases (temporal/authority precedence)
+    cmds:
+      - go run ./cmd/tools seed-gold # implement small seeder stub
+
+  gold:run:
+    desc: Run retrieval gold tests (blocks on failures)
+    cmds:
+      - go run ./cmd/tools run-gold --fail-on-drift --threshold 0.05
+
+  embed:reindex:diff:
+    desc: Diff ingest (re-embed changed paragraphs only)
+    cmds:
+      - go run ./cmd/ingest --mode=diff
+
+  replay:last:
+    desc: Replay last retrieval log entry
+    cmds:
+      - go run ./cmd/tools replay --last
+
+  ci:
+    desc: CI pack (lint, gen, tests, gold)
     cmds:
       - task: fmt
-      - task: vet
+      - task: sqlc
       - task: test
-      - task: tidy
+      - task: gold:run
