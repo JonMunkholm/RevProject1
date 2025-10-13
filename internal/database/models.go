@@ -47,6 +47,20 @@ type AiDocumentJob struct {
 	CompletedAt  sql.NullTime
 }
 
+type AiProviderCatalog struct {
+	ID               string
+	Label            string
+	IconUrl          sql.NullString
+	Description      sql.NullString
+	DocumentationUrl sql.NullString
+	Capabilities     []string
+	Models           []string
+	Fields           json.RawMessage
+	Enabled          bool
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
+}
+
 type AiProviderCredential struct {
 	ID               uuid.UUID
 	CompanyID        uuid.UUID

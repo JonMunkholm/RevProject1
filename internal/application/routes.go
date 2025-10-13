@@ -1,6 +1,7 @@
 package application
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/JonMunkholm/RevProject1/app/pages"
@@ -160,6 +161,13 @@ func (a *App) loadCompanyRoutes(r chi.Router) {
 }
 
 func (a *App) loadAIRoutes(r chi.Router) {
+	catalogEntries := ai.ProviderCatalog()
+	if a.providerCatalog != nil {
+		if entries := a.providerCatalog.Entries(context.Background()); len(entries) > 0 {
+			catalogEntries = entries
+		}
+	}
+
 	aiHandler := &handler.AI{
 		Conversations:     a.convService,
 		Documents:         a.docService,
@@ -171,7 +179,8 @@ func (a *App) loadAIRoutes(r chi.Router) {
 		CredentialCipher:  a.credentialCipher,
 		CredentialEvents:  a.credentialEvents,
 		CredentialMetrics: a.credentialMetrics,
-		ProviderCatalog:   ai.ProviderCatalog(),
+		ProviderCatalog:   catalogEntries,
+		CatalogLoader:     a.providerCatalog,
 	}
 
 	r.Post("/conversations", aiHandler.CreateConversation)

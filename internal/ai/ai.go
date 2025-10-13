@@ -11,6 +11,7 @@ import (
 	doc "github.com/JonMunkholm/RevProject1/internal/ai/documents"
 	documentsqlstore "github.com/JonMunkholm/RevProject1/internal/ai/documents/sqlstore"
 	"github.com/JonMunkholm/RevProject1/internal/ai/provider/catalog"
+	"github.com/JonMunkholm/RevProject1/internal/ai/provider/gemini"
 	"github.com/JonMunkholm/RevProject1/internal/ai/provider/openai"
 	t "github.com/JonMunkholm/RevProject1/internal/ai/tool"
 	"github.com/JonMunkholm/RevProject1/internal/ai/tool/audit"
@@ -49,6 +50,7 @@ type (
 	CredentialLogger     = cred.Logger
 	ProviderCatalogEntry = catalog.Entry
 	ProviderField        = catalog.Field
+	GeminiConfig         = gemini.Config
 
 	ConversationService       = conversation.Service
 	ConversationSession       = conversation.Session
@@ -102,6 +104,7 @@ func ParseCredentialReference(ref string) (CredentialReference, error) {
 }
 
 func NewOpenAIProviderFactory(cfg openai.Config) ProviderFactory { return openai.Factory(cfg) }
+func NewGeminiProviderFactory(cfg GeminiConfig) ProviderFactory  { return gemini.Factory(cfg) }
 
 func NewAESCipher(key []byte) (CredentialCipher, error) { return aescipher.New(key) }
 

@@ -1,6 +1,15 @@
 package catalog
 
-import "sort"
+import (
+	"context"
+	"database/sql"
+	"encoding/json"
+	"sort"
+	"sync"
+	"time"
+
+	"github.com/JonMunkholm/RevProject1/internal/database"
+)
 
 // Field describes a provider-specific form input for credential configuration.
 type Field struct {
@@ -59,4 +68,120 @@ func Lookup(id string) (Entry, bool) {
 		}
 	}
 	return Entry{}, false
+}
+
+// Store exposes the subset of database.Queries needed for catalog loading.
+type Store interface {
+	ListAIProviderCatalogEntries(ctx context.Context) ([]database.AiProviderCatalog, error)
+}
+
+// Loader retrieves provider catalog entries from a backing store with optional caching.
+type Loader struct {
+	store   Store
+	ttl     time.Duration
+	mu      sync.RWMutex
+	entries []Entry
+	expires time.Time
+}
+
+// NewLoader constructs a Loader that refreshes from the provided Store at most every ttl.
+// A non-positive ttl disables caching (entries are fetched on every call).
+func NewLoader(store Store, ttl time.Duration) *Loader {
+	return &Loader{store: store, ttl: ttl}
+}
+
+// Entries returns catalog entries fetched from the store or falls back to the static defaults.
+func (l *Loader) Entries(ctx context.Context) []Entry {
+	if l == nil || l.store == nil {
+		return Catalog()
+	}
+
+	now := time.Now()
+	if l.ttl > 0 {
+		l.mu.RLock()
+		if len(l.entries) > 0 && now.Before(l.expires) {
+			result := copyEntries(l.entries)
+			l.mu.RUnlock()
+			return result
+		}
+		l.mu.RUnlock()
+	}
+
+	entries, err := loadEntries(ctx, l.store)
+	if err != nil || len(entries) == 0 {
+		return Catalog()
+	}
+
+	if l.ttl > 0 {
+		l.mu.Lock()
+		l.entries = entries
+		l.expires = now.Add(l.ttl)
+		l.mu.Unlock()
+	}
+
+	return copyEntries(entries)
+}
+
+func loadEntries(ctx context.Context, store Store) ([]Entry, error) {
+	rows, err := store.ListAIProviderCatalogEntries(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	entries := make([]Entry, 0, len(rows))
+	for _, row := range rows {
+		entry, err := mapRow(row)
+		if err != nil {
+			return nil, err
+		}
+		entries = append(entries, entry)
+	}
+	sort.Slice(entries, func(i, j int) bool { return entries[i].ID < entries[j].ID })
+	return entries, nil
+}
+
+func mapRow(row database.AiProviderCatalog) (Entry, error) {
+	var fields []Field
+	if len(row.Fields) > 0 {
+		if err := json.Unmarshal(row.Fields, &fields); err != nil {
+			return Entry{}, err
+		}
+	}
+
+	entry := Entry{
+		ID:               row.ID,
+		Label:            row.Label,
+		IconURL:          stringFromNull(row.IconUrl),
+		Description:      stringFromNull(row.Description),
+		DocumentationURL: stringFromNull(row.DocumentationUrl),
+		Capabilities:     append([]string(nil), row.Capabilities...),
+		Models:           append([]string(nil), row.Models...),
+		Fields:           fields,
+	}
+	return entry, nil
+}
+
+func copyEntries(src []Entry) []Entry {
+	out := make([]Entry, len(src))
+	for i, entry := range src {
+		copyEntry := entry
+		copyEntry.Capabilities = append([]string(nil), entry.Capabilities...)
+		copyEntry.Models = append([]string(nil), entry.Models...)
+		fieldsCopy := make([]Field, len(entry.Fields))
+		for j, field := range entry.Fields {
+			fieldCopy := field
+			fieldCopy.Options = append([]string(nil), field.Options...)
+			fieldsCopy[j] = fieldCopy
+		}
+		copyEntry.Fields = fieldsCopy
+		out[i] = copyEntry
+	}
+	return out
+}
+
+func stringFromNull(value sql.NullString) string {
+	if value.Valid {
+		return value.String
+	}
+	return ""
 }

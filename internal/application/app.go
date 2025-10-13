@@ -11,12 +11,17 @@ import (
 
 	"github.com/JonMunkholm/RevProject1/internal/ai"
 	docsvr "github.com/JonMunkholm/RevProject1/internal/ai/documents"
+	catalogProvider "github.com/JonMunkholm/RevProject1/internal/ai/provider/catalog"
+	geminiProvider "github.com/JonMunkholm/RevProject1/internal/ai/provider/gemini"
 	openaiProvider "github.com/JonMunkholm/RevProject1/internal/ai/provider/openai"
 	"github.com/JonMunkholm/RevProject1/internal/database"
 	_ "github.com/lib/pq"
 )
 
-const defaultAIProvider = "openai"
+const (
+	defaultAIProvider = "openai"
+	catalogCacheTTL   = 5 * time.Minute
+)
 
 type App struct {
 	router            http.Handler
@@ -35,6 +40,7 @@ type App struct {
 	docWorker         *docsvr.Worker
 	aiClient          *ai.Client
 	aiAPIKey          string
+	providerCatalog   *catalogProvider.Loader
 }
 
 // Define app struct and load routes
@@ -93,9 +99,16 @@ func (a *App) initAI() {
 		Logger:       clientLogger,
 	}
 
+	geminiConfig := geminiProvider.Config{
+		BaseURL: os.Getenv("GEMINI_API_BASE"),
+		Model:   os.Getenv("GEMINI_MODEL"),
+		Logger:  clientLogger,
+	}
+
 	clientConfig := ai.Config{
 		Providers: map[string]ai.ProviderFactory{
 			defaultAIProvider: ai.NewOpenAIProviderFactory(openAIConfig),
+			"gemini":          ai.NewGeminiProviderFactory(geminiConfig),
 		},
 		DefaultProvider: defaultAIProvider,
 		Logger:          clientLogger,
@@ -112,6 +125,8 @@ func (a *App) initAI() {
 		processor := docsvr.NewAIProcessor(a.aiClient, a.aiResolver, a.aiAPIKey, defaultAIProvider)
 		a.docWorker.SetProcessor(processor)
 	}
+
+	a.providerCatalog = catalogProvider.NewLoader(a.db, catalogCacheTTL)
 }
 
 // Start server on port, with graceful shutdown

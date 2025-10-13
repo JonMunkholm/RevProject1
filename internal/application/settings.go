@@ -111,7 +111,7 @@ func (a *App) settingsAIPage() http.HandlerFunc {
 		}
 
 		providerID := strings.TrimSpace(r.URL.Query().Get("provider"))
-		props := buildAIProps(session, providerID)
+		props := a.buildAIProps(ctx, session, providerID)
 
 		if isHTMXRequest(r) {
 			if err := pages.SettingsAIContent(props).Render(ctx, w); err != nil {
@@ -157,8 +157,13 @@ func tabActive(tabs []pages.SettingsTab, target string) bool {
 	return false
 }
 
-func buildAIProps(session auth.Session, providerID string) pages.SettingsAIProps {
+func (a *App) buildAIProps(ctx context.Context, session auth.Session, providerID string) pages.SettingsAIProps {
 	catalog := ai.ProviderCatalog()
+	if a.providerCatalog != nil {
+		if entries := a.providerCatalog.Entries(ctx); len(entries) > 0 {
+			catalog = entries
+		}
+	}
 	providers := make([]pages.SettingsAIProvider, 0, len(catalog))
 	for _, entry := range catalog {
 		fields := make([]pages.SettingsAIField, 0, len(entry.Fields))

@@ -21,6 +21,7 @@ import (
 	"github.com/JonMunkholm/RevProject1/internal/ai"
 	"github.com/JonMunkholm/RevProject1/internal/ai/conversation"
 	"github.com/JonMunkholm/RevProject1/internal/ai/documents"
+	catalog "github.com/JonMunkholm/RevProject1/internal/ai/provider/catalog"
 	"github.com/JonMunkholm/RevProject1/internal/auth"
 	"github.com/JonMunkholm/RevProject1/internal/database"
 	"github.com/go-chi/chi"
@@ -56,7 +57,7 @@ type AI struct {
 	CredentialEvents  credentialEventStore
 	CredentialMetrics ai.CredentialMetrics
 	ProviderCatalog   []ai.ProviderCatalogEntry
-	providerLookup    map[string]ai.ProviderCatalogEntry
+	CatalogLoader     *catalog.Loader
 }
 
 type conversationResponse struct {
@@ -273,11 +274,8 @@ func credentialEventToPageView(event database.AiProviderCredentialEvent, include
 }
 
 // ListProviderCatalog returns metadata about supported AI providers.
-func (h *AI) ListProviderCatalog(w http.ResponseWriter, _ *http.Request) {
-	entries := h.ProviderCatalog
-	if len(entries) == 0 {
-		entries = ai.ProviderCatalog()
-	}
+func (h *AI) ListProviderCatalog(w http.ResponseWriter, r *http.Request) {
+	entries := h.catalogEntries(r.Context())
 	RespondWithJSON(w, http.StatusOK, struct {
 		Items []ai.ProviderCatalogEntry `json:"items"`
 	}{Items: entries})
@@ -310,7 +308,7 @@ func (h *AI) ListProviderCredentials(w http.ResponseWriter, r *http.Request) {
 	userFilter := strings.TrimSpace(r.URL.Query().Get("userId"))
 
 	if providerFilter != "" {
-		if _, _, err := h.normalizeProvider(providerFilter); err != nil {
+		if _, _, err := h.normalizeProvider(r.Context(), providerFilter); err != nil {
 			RespondWithError(w, http.StatusBadRequest, "unknown provider", err)
 			return
 		}
@@ -384,7 +382,7 @@ func (h *AI) ListProviderCredentialEvents(w http.ResponseWriter, r *http.Request
 	}
 
 	providerParam := strings.TrimSpace(chi.URLParam(r, "providerID"))
-	providerID, _, err := h.normalizeProvider(providerParam)
+	providerID, _, err := h.normalizeProvider(r.Context(), providerParam)
 	if err != nil {
 		RespondWithError(w, http.StatusBadRequest, "unknown provider", err)
 		return
@@ -460,7 +458,7 @@ func (h *AI) ProviderStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	providerParam := chi.URLParam(r, "providerID")
-	providerID, entry, err := h.normalizeProvider(providerParam)
+	providerID, entry, err := h.normalizeProvider(r.Context(), providerParam)
 	if err != nil {
 		handleProviderStatusError(w, r, http.StatusBadRequest, "Unknown provider", err)
 		return
@@ -724,7 +722,7 @@ func (h *AI) TestProviderCredential(w http.ResponseWriter, r *http.Request) {
 	if providerCandidate == "" {
 		providerCandidate = req.Provider
 	}
-	providerID, _, err := h.normalizeProvider(providerCandidate)
+	providerID, _, err := h.normalizeProvider(r.Context(), providerCandidate)
 	if err != nil {
 		if respondWithAINotice(w, r, "error", "Unknown provider", err) {
 			return
@@ -1276,7 +1274,7 @@ func (h *AI) UpsertProviderCredential(w http.ResponseWriter, r *http.Request) {
 	if providerCandidate == "" {
 		providerCandidate = req.Provider
 	}
-	providerID, _, err := h.normalizeProvider(providerCandidate)
+	providerID, _, err := h.normalizeProvider(r.Context(), providerCandidate)
 	if err != nil {
 		if respondWithAINotice(w, r, "error", "Unknown provider", err) {
 			return
@@ -1721,34 +1719,44 @@ func deriveCredentialSuffix(_ string, apiKey string) string {
 	return trimmed[len(trimmed)-4:]
 }
 
-func (h *AI) catalogEntry(providerID string) (ai.ProviderCatalogEntry, bool) {
+func (h *AI) catalogEntries(ctx context.Context) []ai.ProviderCatalogEntry {
 	if h == nil {
-		return ai.ProviderCatalogEntry{}, false
+		return ai.ProviderCatalog()
 	}
-	id := strings.TrimSpace(providerID)
-	if id == "" {
-		id = h.DefaultProvider
-	}
-	if h.providerLookup == nil {
-		h.providerLookup = make(map[string]ai.ProviderCatalogEntry, len(h.ProviderCatalog))
-		for _, entry := range h.ProviderCatalog {
-			h.providerLookup[entry.ID] = entry
+	if h.CatalogLoader != nil {
+		if entries := h.CatalogLoader.Entries(ctx); len(entries) > 0 {
+			return entries
 		}
 	}
-	entry, ok := h.providerLookup[id]
-	return entry, ok
+	if len(h.ProviderCatalog) > 0 {
+		return h.ProviderCatalog
+	}
+	return ai.ProviderCatalog()
 }
 
-func (h *AI) normalizeProvider(providerID string) (string, ai.ProviderCatalogEntry, error) {
+func (h *AI) catalogEntry(ctx context.Context, providerID string) (ai.ProviderCatalogEntry, bool) {
+	id := strings.TrimSpace(providerID)
+	if id == "" {
+		return ai.ProviderCatalogEntry{}, false
+	}
+	for _, entry := range h.catalogEntries(ctx) {
+		if strings.EqualFold(entry.ID, id) {
+			return entry, true
+		}
+	}
+	return ai.ProviderCatalogEntry{}, false
+}
+
+func (h *AI) normalizeProvider(ctx context.Context, providerID string) (string, ai.ProviderCatalogEntry, error) {
 	id := strings.TrimSpace(providerID)
 	if id == "" {
 		id = h.DefaultProvider
 	}
-	entry, ok := h.catalogEntry(id)
+	entry, ok := h.catalogEntry(ctx, id)
 	if !ok {
 		return "", ai.ProviderCatalogEntry{}, fmt.Errorf("unknown provider %q", id)
 	}
-	return id, entry, nil
+	return entry.ID, entry, nil
 }
 
 func writeAINotice(ctx context.Context, w http.ResponseWriter, notice pages.SettingsNotice) {
