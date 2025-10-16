@@ -191,6 +191,8 @@ func (a *App) loadChatRoutes(r chi.Router) {
 	r.Use(auth.RequireCompanyRole(auth.RoleViewer))
 
 	r.Get("/", a.chatPage())
+	r.Get("/conversations", a.aiHandler.ChatListSessions)
+	r.Get("/conversations/{sessionID}", a.aiHandler.ChatLoadSession)
 	r.Post("/conversations", a.aiHandler.ChatCreateSession)
 	r.Post("/conversations/{sessionID}/messages", a.aiHandler.ChatAppendMessage)
 }

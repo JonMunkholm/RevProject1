@@ -29,6 +29,7 @@ type navLink struct {
 
 var dashboardNavLinks = []navLink{
 	{Route: "dashboard", Label: "Dashboard", Icon: "DB"},
+	{Route: "chat", Label: "Chat", Icon: "CH"},
 	{Route: "review", Label: "Review", Icon: "RV"},
 	{Route: "customers", Label: "Customers", Icon: "CU"},
 	{Route: "products", Label: "Products", Icon: "PR"},

@@ -24,7 +24,7 @@ func (a *App) chatPage() http.HandlerFunc {
 		providerParam := strings.TrimSpace(r.URL.Query().Get("provider"))
 		conversationParam := strings.TrimSpace(r.URL.Query().Get("conversation"))
 
-		props, err := a.aiHandler.BuildChatProps(r.Context(), session, providerParam, conversationParam)
+		props, err := a.aiHandler.BuildChatProps(r.Context(), session, providerParam, conversationParam, true)
 		if err != nil {
 			auth.RespondWithError(w, http.StatusInternalServerError, "failed to load chat", err)
 			return

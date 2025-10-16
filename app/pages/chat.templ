@@ -2,6 +2,8 @@ package pages
 
 import (
     "fmt"
+    "net/url"
+    "strconv"
     "strings"
     "time"
 
@@ -20,14 +22,35 @@ type ChatMessageView struct {
     CreatedAt time.Time
 }
 
+type ChatConversationView struct {
+    ID            string
+    Title         string
+    Preview       string
+    ProviderID    string
+    ProviderLabel string
+    UpdatedAt     time.Time
+    IsActive      bool
+}
+
+type ChatConversationChunkProps struct {
+    Conversations          []ChatConversationView
+    NextOffset             int
+    HasMore                bool
+    ActiveConversationID   string
+    ActiveProviderID       string
+}
+
 type ChatPageProps struct {
-    Providers           []ChatProvider
-    ActiveProviderID    string
-    ActiveProviderLabel string
-    ConversationID      string
-    Messages            []ChatMessageView
-    BlockedReason       string
-    ErrorMessage        string
+    Providers              []ChatProvider
+    ActiveProviderID       string
+    ActiveProviderLabel    string
+    ConversationID         string
+    Messages               []ChatMessageView
+    BlockedReason          string
+    ErrorMessage           string
+    Conversations          []ChatConversationView
+    ConversationsNextOffset int
+    ConversationsHasMore    bool
 }
 
 type ChatTranscriptProps struct {
@@ -51,31 +74,34 @@ templ ChatPage(props ChatPageProps) {
 templ ChatShell(props ChatPageProps) {
     <div class="chat-layout" id="chat-root">
         <aside class="chat-layout__sidebar">
-            <header class="chat-layout__sidebar-header">
-                <h2>Providers</h2>
-                <p>Select a provider to start chatting.</p>
-            </header>
-            if len(props.Providers) == 0 {
-                <p class="chat-layout__empty">No providers available. Add credentials in Settings → AI.</p>
-            } else {
-                <ul class="chat-provider-list">
-                    for _, provider := range props.Providers {
-                        <li class={chatProviderClasses(provider.ID == props.ActiveProviderID)}>
-                            <button
-                                type="button"
-                                hx-post="/app/chat/conversations"
-                                hx-target="#chat-root"
-                                hx-swap="outerHTML"
-                                hx-encoding="json"
-                                hx-vals={fmt.Sprintf("{\"provider\":\"%s\"}", provider.ID)}
-                                hx-push-url={fmt.Sprintf("/app/chat?provider=%s", provider.ID)}
-                            >
-                                {provider.Label}
-                            </button>
-                        </li>
-                    }
-                </ul>
-            }
+            <section class="chat-sidebar-section">
+                <header class="chat-layout__sidebar-header">
+                    <h2>Provider</h2>
+                    <p>Select a provider to control this conversation.</p>
+                </header>
+                if len(props.Providers) == 0 {
+                    <p class="chat-layout__empty">No providers available. Add credentials in Settings → AI.</p>
+                } else {
+                    <ul class="chat-provider-list">
+                        for _, provider := range props.Providers {
+                            <li class={chatProviderClasses(provider.ID == props.ActiveProviderID)}>
+                                <button
+                                    type="button"
+                                    hx-post="/app/chat/conversations"
+                                    hx-target="#chat-root"
+                                    hx-swap="outerHTML"
+                                    hx-encoding="json"
+                                    hx-vals={fmt.Sprintf("{\"provider\":\"%s\"}", provider.ID)}
+                                    hx-push-url={fmt.Sprintf("/app/chat?provider=%s", provider.ID)}
+                                >
+                                    {provider.Label}
+                                </button>
+                            </li>
+                        }
+                    </ul>
+                }
+            </section>
+            @ChatConversationList(props)
         </aside>
         <section class="chat-layout__main">
             <header class="chat-layout__main-header">
@@ -109,6 +135,75 @@ templ ChatShell(props ChatPageProps) {
             </div>
         </section>
     </div>
+}
+
+templ ChatConversationList(props ChatPageProps) {
+    <section class="chat-sidebar-section chat-sidebar-section--conversations">
+        <header class="chat-layout__sidebar-header">
+            <h2>Recent conversations</h2>
+            <p>Resume a previous chat or start a new one.</p>
+        </header>
+        if len(props.Conversations) == 0 {
+            <p class="chat-layout__empty">No conversations yet. Send a message to create one.</p>
+        } else {
+            <ol class="chat-conversation-list" id="chat-conversation-list">
+                for _, conv := range props.Conversations {
+                    @ChatConversationListItem(conv)
+                }
+                if props.ConversationsHasMore {
+                    @ChatConversationSentinel(props.ConversationsNextOffset, props.ActiveProviderID, props.ConversationID)
+                }
+            </ol>
+            <div id="chat-conversation-loading" class="chat-conversation-list__loading htmx-indicator" aria-live="polite">
+                Loading more conversations…
+            </div>
+        }
+    </section>
+}
+
+templ ChatConversationItems(props ChatConversationChunkProps) {
+    for _, conv := range props.Conversations {
+        @ChatConversationListItem(conv)
+    }
+    if props.HasMore {
+        @ChatConversationSentinel(props.NextOffset, props.ActiveProviderID, props.ActiveConversationID)
+    }
+}
+
+templ ChatConversationListItem(conv ChatConversationView) {
+    <li class={chatConversationItemClasses(conv.IsActive)}>
+        <a
+            class="chat-conversation"
+            href={conversationPushURL(conv.ProviderID, conv.ID)}
+            hx-get={conversationLoadURL(conv.ID, conv.ProviderID)}
+            hx-target="#chat-root"
+            hx-swap="outerHTML"
+            hx-push-url={conversationPushURL(conv.ProviderID, conv.ID)}
+        >
+            <span class="chat-conversation__title">{conv.Title}</span>
+            <span class="chat-conversation__meta">{conversationMeta(conv.ProviderLabel, conv.UpdatedAt)}</span>
+            if conv.Preview != "" {
+                <p class="chat-conversation__preview">{conv.Preview}</p>
+            }
+        </a>
+    </li>
+}
+
+templ ChatConversationSentinel(offset int, providerID, conversationID string) {
+    <li class="chat-conversation-list__sentinel">
+        <button
+            type="button"
+            class="chat-conversation-list__load-more"
+            hx-get={conversationListURL(offset, providerID, conversationID)}
+            hx-trigger="revealed once, click"
+            hx-target="#chat-conversation-list"
+            hx-swap="beforeend"
+            hx-indicator="#chat-conversation-loading"
+            hx-on::after-request="this.closest('li').remove()"
+        >
+            Load more conversations
+        </button>
+    </li>
 }
 
 templ ChatTranscript(props ChatTranscriptProps) {
@@ -150,6 +245,8 @@ templ ChatTranscript(props ChatTranscriptProps) {
                 hx-swap="outerHTML"
                 hx-encoding="json"
                 hx-on::after-request="this.reset()"
+                hx-trigger="submit from:#chat-input"
+                hx-on::init="this.addEventListener('keydown', (event) => { if (event.key === 'Enter' && !event.shiftKey && event.target.id === 'chat-input') { event.preventDefault(); htmx.trigger(this, 'submit'); } });"
             >
                 <label class="chat-composer__label" for="chat-input">Message</label>
                 <textarea
@@ -165,6 +262,72 @@ templ ChatTranscript(props ChatTranscriptProps) {
             </form>
         }
     </div>
+}
+
+func chatConversationItemClasses(active bool) string {
+    if active {
+        return "chat-conversation-list__item chat-conversation-list__item--active"
+    }
+    return "chat-conversation-list__item"
+}
+
+func conversationLoadURL(conversationID, providerID string) string {
+    if strings.TrimSpace(providerID) == "" {
+        return fmt.Sprintf("/app/chat/conversations/%s", conversationID)
+    }
+    return fmt.Sprintf("/app/chat/conversations/%s?provider=%s", conversationID, url.QueryEscape(providerID))
+}
+
+func conversationPushURL(providerID, conversationID string) string {
+    values := url.Values{}
+    if strings.TrimSpace(providerID) != "" {
+        values.Set("provider", providerID)
+    }
+    if strings.TrimSpace(conversationID) != "" {
+        values.Set("conversation", conversationID)
+    }
+    if len(values) == 0 {
+        return "/app/chat"
+    }
+    return "/app/chat?" + values.Encode()
+}
+
+func conversationListURL(offset int, providerID, conversationID string) string {
+    if offset < 0 {
+        offset = 0
+    }
+    values := url.Values{}
+    values.Set("offset", strconv.Itoa(offset))
+    if strings.TrimSpace(providerID) != "" {
+        values.Set("provider", providerID)
+    }
+    if strings.TrimSpace(conversationID) != "" {
+        values.Set("active", conversationID)
+    }
+    encoded := values.Encode()
+    if encoded == "" {
+        return "/app/chat/conversations"
+    }
+    return "/app/chat/conversations?" + encoded
+}
+
+func conversationMeta(providerLabel string, updated time.Time) string {
+    label := strings.TrimSpace(providerLabel)
+    if label == "" {
+        label = "Conversation"
+    }
+    timestamp := formatConversationTimestamp(updated)
+    if timestamp == "" {
+        return label
+    }
+    return fmt.Sprintf("%s · %s", label, timestamp)
+}
+
+func formatConversationTimestamp(ts time.Time) string {
+    if ts.IsZero() {
+        return ""
+    }
+    return ts.Local().Format("Jan 2, 15:04")
 }
 
 func chatProviderClasses(active bool) string {

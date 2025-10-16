@@ -34,7 +34,7 @@ func LayoutWithAssets(title string, styles []string, body templ.Component) templ
 				return err
 			}
 		}
-		if err := write("</head><body hx-boost=\"true\">"); err != nil {
+		if err := write("</head><body hx-boost=\"true\" hx-ext=\"json-enc\">"); err != nil {
 			return err
 		}
 		if body != nil {
@@ -43,7 +43,11 @@ func LayoutWithAssets(title string, styles []string, body templ.Component) templ
 			}
 		}
 		htmxScript := "<script src=\"https://cdn.jsdelivr.net/npm/htmx.org@2.0.7/dist/htmx.min.js\" integrity=\"sha384-ZBXiYtYQ6hJ2Y0ZNoYuI+Nq5MqWBr+chMrS/RkXpNzQCApHEhOt2aY8EJgqwHLkJ\" crossorigin=\"anonymous\" defer></script>"
+		jsonEncScript := "<script src=\"https://cdn.jsdelivr.net/npm/htmx.org@2.0.7/dist/ext/json-enc.js\" crossorigin=\"anonymous\" defer></script>"
 		if err := write(htmxScript); err != nil {
+			return err
+		}
+		if err := write(jsonEncScript); err != nil {
 			return err
 		}
 		return write("</body></html>")
