@@ -150,6 +150,94 @@ type providerCredentialEventResponse struct {
 	CreatedAt time.Time      `json:"createdAt"`
 }
 
+// ChatCreateSession starts a new conversation and returns the chat shell markup for HTMX consumers.
+func (h *AI) ChatCreateSession(w http.ResponseWriter, r *http.Request) {
+	if h == nil || h.Conversations == nil {
+		h.writeChatShell(w, r.Context(), pages.ChatPageProps{ErrorMessage: "AI conversations unavailable."})
+		return
+	}
+
+	session, ok := auth.SessionFromContext(r.Context())
+	if !ok {
+		h.writeChatShell(w, r.Context(), pages.ChatPageProps{ErrorMessage: "Authentication required."})
+		return
+	}
+
+	var req createConversationRequest
+	if err := decodeJSON(r, &req); err != nil {
+		h.writeChatShell(w, r.Context(), pages.ChatPageProps{ErrorMessage: "Invalid request payload."})
+		return
+	}
+
+	props, err := h.BuildChatProps(r.Context(), session, req.Provider, "")
+	if err != nil {
+		log.Printf("chat: failed to build chat props: %v", err)
+		props.ErrorMessage = "Failed to start conversation. Please try again."
+	}
+
+	h.writeChatShell(w, r.Context(), props)
+}
+
+// ChatAppendMessage appends a message to an existing conversation and renders the updated transcript.
+func (h *AI) ChatAppendMessage(w http.ResponseWriter, r *http.Request) {
+	if h == nil || h.Conversations == nil {
+		h.writeChatTranscript(w, r.Context(), pages.ChatTranscriptProps{ErrorMessage: "AI conversations unavailable."})
+		return
+	}
+
+	sessionInfo, ok := auth.SessionFromContext(r.Context())
+	if !ok {
+		h.writeChatTranscript(w, r.Context(), pages.ChatTranscriptProps{ErrorMessage: "Authentication required."})
+		return
+	}
+
+	sessionID, err := uuid.Parse(chi.URLParam(r, "sessionID"))
+	if err != nil {
+		h.writeChatTranscript(w, r.Context(), pages.ChatTranscriptProps{ErrorMessage: "Invalid conversation."})
+		return
+	}
+
+	var req appendMessageRequest
+	if err := decodeJSON(r, &req); err != nil {
+		h.writeChatTranscript(w, r.Context(), pages.ChatTranscriptProps{ConversationID: sessionID.String(), ErrorMessage: "Invalid request payload."})
+		return
+	}
+
+	role := strings.TrimSpace(req.Role)
+	if role == "" {
+		role = "user"
+	}
+
+	content := strings.TrimSpace(req.Content)
+	if content == "" {
+		h.writeChatTranscript(w, r.Context(), pages.ChatTranscriptProps{ConversationID: sessionID.String(), ErrorMessage: "Message content is required."})
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
+	defer cancel()
+
+	sessionRecord, messages, _, appendErr := h.appendConversationAndListMessages(ctx, sessionInfo, sessionID, role, content, req.Metadata)
+	if appendErr != nil {
+		props := pages.ChatTranscriptProps{ConversationID: sessionID.String(), ErrorMessage: "Failed to send message."}
+		if errors.Is(appendErr, sql.ErrNoRows) {
+			props.ErrorMessage = "Conversation not found. Start a new conversation."
+		}
+		providerID := sessionRecord.ProviderID
+		if blocked := h.chatCredentialReason(ctx, sessionInfo, providerID); blocked != "" {
+			props.BlockedReason = blocked
+		}
+		h.writeChatTranscript(w, r.Context(), props)
+		return
+	}
+
+	props := pages.ChatTranscriptProps{
+		ConversationID: sessionRecord.ID.String(),
+		Messages:       chatMessagesToView(messages),
+	}
+	h.writeChatTranscript(w, r.Context(), props)
+}
+
 func credentialRecordToResponse(record ai.CredentialRecord) providerCredentialResponse {
 	var userID *string
 	if record.UserID.Valid {
@@ -1003,62 +1091,13 @@ func (h *AI) AppendConversationMessage(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
 	defer cancel()
 
-	sessionRecord, err := h.Conversations.Session(ctx, sessionInfo.CompanyID, sessionID)
+	_, _, reply, err := h.appendConversationAndListMessages(ctx, sessionInfo, sessionID, role, req.Content, req.Metadata)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			RespondWithError(w, http.StatusNotFound, "conversation not found", err)
 			return
 		}
-		RespondWithError(w, http.StatusInternalServerError, "failed to load conversation", err)
-		return
-	}
-
-	msg, err := h.Conversations.AppendMessage(ctx, conversation.CreateMessageParams{
-		SessionID: sessionID,
-		Role:      role,
-		Content:   req.Content,
-		Metadata:  req.Metadata,
-	})
-	if err != nil {
-		RespondWithError(w, http.StatusInternalServerError, "failed to save message", err)
-		return
-	}
-
-	if h.Client == nil {
-		RespondWithJSON(w, http.StatusAccepted, messageToResponse(msg))
-		return
-	}
-
-	messages, err := h.Conversations.ListSessionMessages(ctx, sessionID)
-	if err != nil {
-		RespondWithError(w, http.StatusInternalServerError, "failed to load message history", err)
-		return
-	}
-
-	metadata := mergeMetadataMaps(sessionRecord.Metadata, req.Metadata)
-	completionMetadata := map[string]any{}
-	if addendum, ok := metadata["system_addendum"].(string); ok && addendum != "" {
-		completionMetadata = ai.WithSystemAddendum(completionMetadata, addendum)
-	}
-
-	options := h.userOptions(ctx, sessionInfo.CompanyID, sessionInfo.UserID, sessionRecord.ProviderID)
-	prompt := buildConversationPrompt(messages)
-	resp, err := h.Client.Completion(ctx, options, ai.CompletionRequest{Prompt: prompt, Metadata: completionMetadata})
-	if err != nil {
 		RespondWithError(w, http.StatusInternalServerError, "failed to generate reply", err)
-		return
-	}
-
-	reply, err := h.Conversations.AppendMessage(ctx, conversation.CreateMessageParams{
-		SessionID: sessionID,
-		Role:      "assistant",
-		Content:   strings.TrimSpace(resp.Text),
-		Metadata: map[string]any{
-			"provider": sessionRecord.ProviderID,
-		},
-	})
-	if err != nil {
-		RespondWithError(w, http.StatusInternalServerError, "failed to persist reply", err)
 		return
 	}
 
@@ -1508,6 +1547,218 @@ func hashSecret(secret []byte) []byte {
 	out := make([]byte, len(sum))
 	copy(out, sum[:])
 	return out
+}
+
+func (h *AI) BuildChatProps(ctx context.Context, session auth.Session, providerCandidate, conversationCandidate string) (pages.ChatPageProps, error) {
+	props := pages.ChatPageProps{}
+	entries := h.catalogEntries(ctx)
+	props.Providers = chatProvidersFromEntries(entries)
+
+	if len(entries) == 0 {
+		props.BlockedReason = "No providers available. Add a credential in Settings → AI."
+		return props, nil
+	}
+
+	activeID := strings.TrimSpace(providerCandidate)
+	if activeID == "" {
+		activeID = h.DefaultProvider
+	}
+
+	activeEntry := entries[0]
+	found := false
+	for _, entry := range entries {
+		if entry.ID == activeID {
+			activeEntry = entry
+			found = true
+			break
+		}
+	}
+	if !found {
+		activeID = entries[0].ID
+		activeEntry = entries[0]
+	}
+
+	props.ActiveProviderID = activeID
+	props.ActiveProviderLabel = activeEntry.Label
+	props.BlockedReason = h.chatCredentialReason(ctx, session, activeID)
+
+	if h.Conversations == nil {
+		return props, errors.New("conversation service not configured")
+	}
+
+	var sessionRecord conversation.Session
+	if conversationCandidate != "" {
+		if conversationID, err := uuid.Parse(conversationCandidate); err == nil {
+			ctxLookup, cancel := context.WithTimeout(ctx, 10*time.Second)
+			sessionRecord, err = h.Conversations.Session(ctxLookup, session.CompanyID, conversationID)
+			cancel()
+			if err != nil {
+				if !errors.Is(err, sql.ErrNoRows) {
+					return props, err
+				}
+			} else if sessionRecord.ProviderID != activeID {
+				sessionRecord = conversation.Session{}
+			}
+		}
+	}
+
+	if sessionRecord.ID == uuid.Nil {
+		ctxCreate, cancel := context.WithTimeout(ctx, 10*time.Second)
+		newSession, err := h.Conversations.StartSession(ctxCreate, conversation.CreateSessionParams{
+			CompanyID:  session.CompanyID,
+			UserID:     session.UserID,
+			ProviderID: activeID,
+			Title:      fmt.Sprintf("%s conversation", activeEntry.Label),
+		})
+		cancel()
+		if err != nil {
+			return props, err
+		}
+		sessionRecord = newSession
+	}
+
+	ctxMsgs, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	messages, err := h.Conversations.ListSessionMessages(ctxMsgs, sessionRecord.ID)
+	if err != nil {
+		return props, err
+	}
+
+	props.ConversationID = sessionRecord.ID.String()
+	props.Messages = chatMessagesToView(messages)
+	return props, nil
+}
+
+func (h *AI) chatCredentialReason(ctx context.Context, session auth.Session, providerID string) string {
+	if h.APIKey != "" {
+		return ""
+	}
+	if h.CredentialStore == nil {
+		return "Credential store unavailable."
+	}
+
+	ctxLookup, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	if session.UserID != uuid.Nil {
+		userScope := uuid.NullUUID{UUID: session.UserID, Valid: true}
+		records, err := h.CredentialStore.ListProviderCredentials(ctxLookup, session.CompanyID, providerID, userScope)
+		if err == nil && len(records) > 0 {
+			return ""
+		}
+		if err != nil {
+			log.Printf("chat: list provider credentials (user) failed: %v", err)
+		}
+	}
+
+	companyRecords, err := h.CredentialStore.ListProviderCredentials(ctxLookup, session.CompanyID, providerID, uuid.NullUUID{})
+	if err == nil && len(companyRecords) > 0 {
+		return ""
+	}
+	if err != nil {
+		log.Printf("chat: list provider credentials (company) failed: %v", err)
+		return "Unable to verify credentials right now. Try again later."
+	}
+
+	return "Add a credential for this provider in Settings → AI before chatting."
+}
+
+func chatProvidersFromEntries(entries []ai.ProviderCatalogEntry) []pages.ChatProvider {
+	providers := make([]pages.ChatProvider, 0, len(entries))
+	for _, entry := range entries {
+		providers = append(providers, pages.ChatProvider{ID: entry.ID, Label: entry.Label})
+	}
+	return providers
+}
+
+func chatMessagesToView(messages []conversation.Message) []pages.ChatMessageView {
+	views := make([]pages.ChatMessageView, 0, len(messages))
+	for _, msg := range messages {
+		views = append(views, pages.ChatMessageView{
+			ID:        msg.ID.String(),
+			Role:      msg.Role,
+			Content:   msg.Content,
+			CreatedAt: msg.CreatedAt,
+		})
+	}
+	return views
+}
+
+func (h *AI) appendConversationAndListMessages(ctx context.Context, session auth.Session, sessionID uuid.UUID, role, content string, metadata map[string]any) (conversation.Session, []conversation.Message, conversation.Message, error) {
+	sessionRecord, err := h.Conversations.Session(ctx, session.CompanyID, sessionID)
+	if err != nil {
+		return conversation.Session{}, nil, conversation.Message{}, err
+	}
+
+	msg, err := h.Conversations.AppendMessage(ctx, conversation.CreateMessageParams{
+		SessionID: sessionID,
+		Role:      role,
+		Content:   content,
+		Metadata:  metadata,
+	})
+	if err != nil {
+		return conversation.Session{}, nil, conversation.Message{}, err
+	}
+
+	if h.Client == nil {
+		messages, listErr := h.Conversations.ListSessionMessages(ctx, sessionID)
+		return sessionRecord, messages, msg, listErr
+	}
+
+	messages, err := h.Conversations.ListSessionMessages(ctx, sessionID)
+	if err != nil {
+		return conversation.Session{}, nil, conversation.Message{}, err
+	}
+
+	metadataMerged := mergeMetadataMaps(sessionRecord.Metadata, metadata)
+	completionMetadata := map[string]any{}
+	if addendum, ok := metadataMerged["system_addendum"].(string); ok && addendum != "" {
+		completionMetadata = ai.WithSystemAddendum(completionMetadata, addendum)
+	}
+
+	options := h.userOptions(ctx, session.CompanyID, session.UserID, sessionRecord.ProviderID)
+	if options.APIKey == "" {
+		return sessionRecord, messages, msg, errors.New("credential missing for provider")
+	}
+
+	prompt := buildConversationPrompt(messages)
+	resp, err := h.Client.Completion(ctx, options, ai.CompletionRequest{Prompt: prompt, Metadata: completionMetadata})
+	if err != nil {
+		return conversation.Session{}, nil, conversation.Message{}, err
+	}
+
+	reply, err := h.Conversations.AppendMessage(ctx, conversation.CreateMessageParams{
+		SessionID: sessionID,
+		Role:      "assistant",
+		Content:   strings.TrimSpace(resp.Text),
+		Metadata: map[string]any{
+			"provider": sessionRecord.ProviderID,
+		},
+	})
+	if err != nil {
+		return conversation.Session{}, nil, conversation.Message{}, err
+	}
+
+	updated, err := h.Conversations.ListSessionMessages(ctx, sessionID)
+	if err != nil {
+		return conversation.Session{}, nil, conversation.Message{}, err
+	}
+
+	return sessionRecord, updated, reply, nil
+}
+
+func (h *AI) writeChatShell(w http.ResponseWriter, ctx context.Context, props pages.ChatPageProps) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := pages.ChatShell(props).Render(ctx, w); err != nil {
+		http.Error(w, "Failed to render chat", http.StatusInternalServerError)
+	}
+}
+
+func (h *AI) writeChatTranscript(w http.ResponseWriter, ctx context.Context, props pages.ChatTranscriptProps) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := pages.ChatTranscript(props).Render(ctx, w); err != nil {
+		http.Error(w, "Failed to render chat", http.StatusInternalServerError)
+	}
 }
 
 func (h *AI) userOptions(ctx context.Context, companyID, userID uuid.UUID, providerID string) ai.UserOptions {

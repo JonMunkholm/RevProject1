@@ -1,11 +1,9 @@
 package application
 
 import (
-	"context"
 	"net/http"
 
 	"github.com/JonMunkholm/RevProject1/app/pages"
-	"github.com/JonMunkholm/RevProject1/internal/ai"
 	"github.com/JonMunkholm/RevProject1/internal/auth"
 	"github.com/JonMunkholm/RevProject1/internal/database"
 	"github.com/JonMunkholm/RevProject1/internal/handler"
@@ -43,6 +41,7 @@ func (a *App) loadRoutes() {
 			r.Get("/customers", a.dashboardPage("customers"))
 			r.Get("/products", a.dashboardPage("products"))
 			r.Route("/settings", a.loadSettingsRoutes)
+			r.Route("/chat", a.loadChatRoutes)
 		})
 
 		r.Route("/api", func(r chi.Router) {
@@ -161,27 +160,8 @@ func (a *App) loadCompanyRoutes(r chi.Router) {
 }
 
 func (a *App) loadAIRoutes(r chi.Router) {
-	catalogEntries := ai.ProviderCatalog()
-	if a.providerCatalog != nil {
-		if entries := a.providerCatalog.Entries(context.Background()); len(entries) > 0 {
-			catalogEntries = entries
-		}
-	}
-
-	aiHandler := &handler.AI{
-		Conversations:     a.convService,
-		Documents:         a.docService,
-		DefaultProvider:   defaultAIProvider,
-		Client:            a.aiClient,
-		Resolver:          a.aiResolver,
-		APIKey:            a.aiAPIKey,
-		CredentialStore:   a.credentialStore,
-		CredentialCipher:  a.credentialCipher,
-		CredentialEvents:  a.credentialEvents,
-		CredentialMetrics: a.credentialMetrics,
-		ProviderCatalog:   catalogEntries,
-		CatalogLoader:     a.providerCatalog,
-	}
+	aiHandler := a.newAIHandler()
+	a.aiHandler = aiHandler
 
 	r.Post("/conversations", aiHandler.CreateConversation)
 	r.Get("/conversations", aiHandler.ListConversations)
@@ -201,6 +181,18 @@ func (a *App) loadAIRoutes(r chi.Router) {
 	r.Post("/providers/{providerID}/credential", aiHandler.UpsertProviderCredential)
 	r.Post("/providers/{providerID}/credential/test", aiHandler.TestProviderCredential)
 	r.Delete("/credentials/{credentialID}", aiHandler.DeleteProviderCredential)
+}
+
+func (a *App) loadChatRoutes(r chi.Router) {
+	if a.aiHandler == nil {
+		a.aiHandler = a.newAIHandler()
+	}
+
+	r.Use(auth.RequireCompanyRole(auth.RoleViewer))
+
+	r.Get("/", a.chatPage())
+	r.Post("/conversations", a.aiHandler.ChatCreateSession)
+	r.Post("/conversations/{sessionID}/messages", a.aiHandler.ChatAppendMessage)
 }
 
 func (a *App) loadUserRoutes(r chi.Router) {

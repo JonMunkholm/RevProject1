@@ -15,6 +15,7 @@ import (
 	geminiProvider "github.com/JonMunkholm/RevProject1/internal/ai/provider/gemini"
 	openaiProvider "github.com/JonMunkholm/RevProject1/internal/ai/provider/openai"
 	"github.com/JonMunkholm/RevProject1/internal/database"
+	"github.com/JonMunkholm/RevProject1/internal/handler"
 	_ "github.com/lib/pq"
 )
 
@@ -41,6 +42,7 @@ type App struct {
 	aiClient          *ai.Client
 	aiAPIKey          string
 	providerCatalog   *catalogProvider.Loader
+	aiHandler         *handler.AI
 }
 
 // Define app struct and load routes
@@ -127,6 +129,30 @@ func (a *App) initAI() {
 	}
 
 	a.providerCatalog = catalogProvider.NewLoader(a.db, catalogCacheTTL)
+}
+
+func (a *App) newAIHandler() *handler.AI {
+	catalogEntries := ai.ProviderCatalog()
+	if a.providerCatalog != nil {
+		if entries := a.providerCatalog.Entries(context.Background()); len(entries) > 0 {
+			catalogEntries = entries
+		}
+	}
+
+	return &handler.AI{
+		Conversations:     a.convService,
+		Documents:         a.docService,
+		DefaultProvider:   defaultAIProvider,
+		Client:            a.aiClient,
+		Resolver:          a.aiResolver,
+		APIKey:            a.aiAPIKey,
+		CredentialStore:   a.credentialStore,
+		CredentialCipher:  a.credentialCipher,
+		CredentialEvents:  a.credentialEvents,
+		CredentialMetrics: a.credentialMetrics,
+		ProviderCatalog:   catalogEntries,
+		CatalogLoader:     a.providerCatalog,
+	}
 }
 
 // Start server on port, with graceful shutdown

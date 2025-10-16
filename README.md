@@ -18,6 +18,12 @@ Ensure your Prometheus configuration picks up the application metrics endpoint a
 - Provider credential endpoints are provider-scoped (`/api/ai/providers/{providerID}/...`). The UI uses HTMX to load/save/test credentials and renders inline notices/status badges based on server responses.
 - Users without permission receive inline warnings rather than hidden errors; HTMX partials (`SettingsAINoticePartial`, `SettingsAIStatusBadgePartial`) are emitted by handlers when needed.
 
+## Chat Interface (Alpha)
+
+- Navigate to `/app/chat` to start a conversation using the currently selected provider. The UI reuses stored credentials (user → company → global) and will block message input if no key is available.
+- Switching providers spins up a new conversation session; each session persists in Postgres so history can be resumed later.
+- Requests rely on the existing `/api/ai/conversations` flow. Streaming responses are not yet enabled; replies render after completion. Rate-limit and credential failures return inline notices.
+
 ## Development Notes
 
 - Generate templates after editing files under `app/pages/*.templ`:
