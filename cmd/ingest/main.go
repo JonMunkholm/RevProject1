@@ -218,6 +218,7 @@ func extractContent(path string) (string, map[string]string, error) {
 			if parts := strings.SplitN(metaLine, ":", 2); len(parts) == 2 {
 				key := strings.ToLower(strings.ReplaceAll(strings.TrimSpace(parts[0]), " ", "_"))
 				value := strings.TrimSpace(parts[1])
+				value = strings.Trim(value, " \"'")
 				if key != "" && value != "" {
 					meta[key] = value
 				}

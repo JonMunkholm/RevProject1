@@ -2,7 +2,7 @@
 version: "3"
 
 vars:
-  DB_DSN: "{{.DB_DSN | default .ENV.DB_DSN}}"
+  DB_URL: "{{.DB_URL | default .ENV.DB_URL}}"
 
 env:
   GOFLAGS: "-buildvcs=false"
@@ -30,17 +30,17 @@ tasks:
   migrate:status:
     desc: Show migration status
     cmds:
-      - goose -dir db/migrations postgres "{{.DB_DSN}}" status
+      - goose -dir sql/schema postgres "{{.DB_URL}}" status
 
   migrate:up:
     desc: Apply migrations
     cmds:
-      - goose -dir db/migrations postgres "{{.DB_DSN}}" up
+      - goose -dir sql/schema postgres "{{.DB_URL}}" up
 
   migrate:down1:
     desc: Rollback last migration
     cmds:
-      - goose -dir db/migrations postgres "{{.DB_DSN}}" down
+      - goose -dir sql/schema postgres "{{.DB_URL}}" down
 
   test:
     desc: Run unit tests
