@@ -1,0 +1,29 @@
+groups:
+  - name: embedding-alerts
+    rules:
+      - alert: EmbeddingQueueBacklogHigh
+        expr: sqs_approximate_number_of_messages_visible{queue="embedding-jobs"} > 100
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Embedding queue backlog exceeds 100 messages"
+          description: "ApproximateNumberOfMessagesVisible={{ $value }} for more than 5 minutes."
+
+      - alert: EmbeddingFailuresSpike
+        expr: rate(embedding_worker_failures_total[5m]) > 5
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Embedding worker failures above threshold"
+          description: "Worker failure rate {{ $value }} per second."
+
+      - alert: ApiLatencyHigh
+        expr: histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{service=\"api\"}[5m])) by (le)) > 2
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "API P95 latency exceeds 2s"
+          description: "API request latency P95={{ $value }}s for more than 5 minutes."

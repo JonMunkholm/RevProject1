@@ -19,6 +19,9 @@ import (
 	"time"
 
 	"github.com/JonMunkholm/RevProject1/internal/stage1"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/service/sqs"
 	"github.com/google/uuid"
 	"github.com/joho/godotenv"
 	_ "github.com/lib/pq"
@@ -27,6 +30,7 @@ import (
 type options struct {
 	FilePath        string
 	DBURL           string
+	QueueURL        string
 	Framework       string
 	Topic           string
 	Reference       string
@@ -47,6 +51,20 @@ type embeddingResponse struct {
 	Data  []struct {
 		Embedding []float64 `json:"embedding"`
 	} `json:"data"`
+}
+
+type sqlExecutor interface {
+	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
+}
+
+type embeddingJobMessage struct {
+	JobID           uuid.UUID `json:"job_id"`
+	ParagraphID     uuid.UUID `json:"paragraph_id"`
+	SourceHash      string    `json:"source_hash"`
+	Model           string    `json:"model"`
+	Priority        string    `json:"priority"`
+	MetadataVersion string    `json:"metadata_version"`
+	CreatedAt       time.Time `json:"created_at"`
 }
 
 func main() {
@@ -100,23 +118,11 @@ func run(ctx context.Context) error {
 		return fmt.Errorf("check existing paragraph: %w", err)
 	}
 
-	paragraphID := uuid.New()
-	if err := insertParagraph(ctx, db, paragraphID, opts, content, sourceID); err != nil {
-		return fmt.Errorf("insert paragraph: %w", err)
+	if strings.TrimSpace(opts.QueueURL) != "" {
+		return enqueueAsyncJob(ctx, db, opts, content, sourceID)
 	}
 
-	embedding, modelUsed, err := generateEmbedding(ctx, opts.OpenAIBase, opts.OpenAIKey, opts.OpenAIProject, opts.Model, content)
-	if err != nil {
-		return fmt.Errorf("generate embedding: %w", err)
-	}
-
-	embeddingID := uuid.New()
-	if err := insertEmbedding(ctx, db, embeddingID, paragraphID, embedding, modelUsed, opts); err != nil {
-		return fmt.Errorf("insert embedding: %w", err)
-	}
-
-	fmt.Printf("Ingested paragraph %s with embedding %s (%d dimensions)\n", paragraphID, modelUsed, len(embedding))
-	return nil
+	return runSyncEmbedding(ctx, db, opts, content, sourceID)
 }
 
 func parseOptions() (options, error) {
@@ -134,6 +140,7 @@ func parseOptions() (options, error) {
 	}
 
 	flag.StringVar(&opts.FilePath, "file", "", "Path to the paragraph text file to ingest")
+	flag.StringVar(&opts.QueueURL, "queue-url", os.Getenv("EMBED_QUEUE_URL"), "Embedding job SQS queue URL (defaults to EMBED_QUEUE_URL env)")
 	flag.StringVar(&opts.DBURL, "db", "", "Postgres connection string (defaults to DB_URL env)")
 	flag.StringVar(&opts.Framework, "framework", opts.Framework, "Accounting framework (e.g. US_GAAP)")
 	flag.StringVar(&opts.Topic, "topic", opts.Topic, "Topic identifier (e.g. ASC606)")
@@ -247,7 +254,11 @@ func lookupParagraphBySource(ctx context.Context, db *sql.DB, sourceID string) (
 }
 
 func insertParagraph(ctx context.Context, db *sql.DB, paragraphID uuid.UUID, opts options, content, sourceID string) error {
-	_, err := db.ExecContext(ctx, `
+	return insertParagraphExec(ctx, db, paragraphID, opts, content, sourceID)
+}
+
+func insertParagraphExec(ctx context.Context, exec sqlExecutor, paragraphID uuid.UUID, opts options, content, sourceID string) error {
+	_, err := exec.ExecContext(ctx, `
 		insert into asc_paragraphs (
 			id,
 			framework,
@@ -363,4 +374,137 @@ func generateEmbedding(ctx context.Context, baseURL, apiKey, projectID, model, i
 		modelUsed = model
 	}
 	return vector, modelUsed, nil
+}
+
+func enqueueAsyncJob(ctx context.Context, db *sql.DB, opts options, content, sourceHash string) error {
+	client, err := newSQSClient(ctx)
+	if err != nil {
+		return fmt.Errorf("init sqs client: %w", err)
+	}
+
+	paragraphID := uuid.New()
+	jobID := uuid.New()
+
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback()
+
+	if err := insertParagraphExec(ctx, tx, paragraphID, opts, content, sourceHash); err != nil {
+		return fmt.Errorf("insert paragraph: %w", err)
+	}
+
+	if err := insertEmbeddingJob(ctx, tx, jobID, paragraphID, opts, sourceHash); err != nil {
+		return fmt.Errorf("insert embedding job: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit paragraph/job transaction: %w", err)
+	}
+
+	message := embeddingJobMessage{
+		JobID:           jobID,
+		ParagraphID:     paragraphID,
+		SourceHash:      sourceHash,
+		Model:           opts.Model,
+		Priority:        "normal",
+		MetadataVersion: opts.SchemaVersion,
+		CreatedAt:       time.Now().UTC(),
+	}
+
+	if err := enqueueEmbeddingJob(ctx, client, opts.QueueURL, message); err != nil {
+		updateParagraphStatus(ctx, db, paragraphID, "failed")
+		markJobFailed(ctx, db, jobID, err)
+		return fmt.Errorf("enqueue embedding job: %w", err)
+	}
+
+	fmt.Printf("Queued embedding job %s for paragraph %s\n", jobID, paragraphID)
+	return nil
+}
+
+func runSyncEmbedding(ctx context.Context, db *sql.DB, opts options, content, sourceHash string) error {
+	paragraphID := uuid.New()
+	if err := insertParagraph(ctx, db, paragraphID, opts, content, sourceHash); err != nil {
+		return fmt.Errorf("insert paragraph: %w", err)
+	}
+
+	if err := updateParagraphStatus(ctx, db, paragraphID, "processing"); err != nil {
+		return fmt.Errorf("set paragraph status: %w", err)
+	}
+
+	embedding, modelUsed, err := generateEmbedding(ctx, opts.OpenAIBase, opts.OpenAIKey, opts.OpenAIProject, opts.Model, content)
+	if err != nil {
+		updateParagraphStatus(ctx, db, paragraphID, "failed")
+		return fmt.Errorf("generate embedding: %w", err)
+	}
+
+	embeddingID := uuid.New()
+	if err := insertEmbedding(ctx, db, embeddingID, paragraphID, embedding, modelUsed, opts); err != nil {
+		updateParagraphStatus(ctx, db, paragraphID, "failed")
+		return fmt.Errorf("insert embedding: %w", err)
+	}
+
+	if err := updateParagraphStatus(ctx, db, paragraphID, "succeeded"); err != nil {
+		return fmt.Errorf("set paragraph succeeded: %w", err)
+	}
+
+	fmt.Printf("Ingested paragraph %s with embedding %s (%d dimensions)\n", paragraphID, modelUsed, len(embedding))
+	return nil
+}
+
+func insertEmbeddingJob(ctx context.Context, exec sqlExecutor, jobID, paragraphID uuid.UUID, opts options, sourceHash string) error {
+	_, err := exec.ExecContext(ctx, `
+		insert into embedding_jobs (
+			id,
+			paragraph_id,
+			source_hash,
+			model,
+			priority,
+			metadata_version
+		) values ($1,$2,$3,$4,$5,$6)`,
+		jobID,
+		paragraphID,
+		sourceHash,
+		opts.Model,
+		"normal",
+		opts.SchemaVersion,
+	)
+	return err
+}
+
+func enqueueEmbeddingJob(ctx context.Context, client *sqs.Client, queueURL string, msg embeddingJobMessage) error {
+	body, err := json.Marshal(msg)
+	if err != nil {
+		return err
+	}
+
+	_, err = client.SendMessage(ctx, &sqs.SendMessageInput{
+		QueueUrl:    aws.String(queueURL),
+		MessageBody: aws.String(string(body)),
+	})
+	return err
+}
+
+func newSQSClient(ctx context.Context) (*sqs.Client, error) {
+	cfg, err := config.LoadDefaultConfig(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return sqs.NewFromConfig(cfg), nil
+}
+
+func updateParagraphStatus(ctx context.Context, exec sqlExecutor, paragraphID uuid.UUID, status string) error {
+	_, err := exec.ExecContext(ctx, `update asc_paragraphs set embedding_status = $2, updated_at = now() where id = $1`, paragraphID, status)
+	return err
+}
+
+func markJobFailed(ctx context.Context, db *sql.DB, jobID uuid.UUID, reason error) {
+	_, _ = db.ExecContext(ctx, `
+		update embedding_jobs
+		set status = 'failed',
+		    last_error = $2,
+		    completed_at = now(),
+		    updated_at = now()
+		where id = $1`, jobID, reason.Error())
 }
