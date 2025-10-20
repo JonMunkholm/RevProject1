@@ -15,6 +15,7 @@ import (
 
 	"github.com/go-chi/chi"
 	"github.com/go-chi/chi/middleware"
+	"github.com/google/uuid"
 	"github.com/joho/godotenv"
 	_ "github.com/lib/pq"
 
@@ -24,6 +25,7 @@ import (
 
 type server struct {
 	retrieval *retrieval.Service
+	db        *sql.DB
 }
 
 func main() {
@@ -80,13 +82,14 @@ func run() error {
 		return fmt.Errorf("init retrieval: %w", err)
 	}
 
-	srv := &server{retrieval: retrievalSvc}
+	srv := &server{retrieval: retrievalSvc, db: db}
 	router := chi.NewRouter()
 	router.Use(middleware.Logger)
 	router.Get("/", func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/api/search", http.StatusSeeOther)
 	})
 	router.Get("/api/search", srv.handleSearch)
+	router.Get("/api/embedding-jobs/{id}", srv.handleJobStatus)
 
 	log.Printf("listening on %s", port)
 	return http.ListenAndServe(port, router)
@@ -122,6 +125,76 @@ func (s *server) handleSearch(w http.ResponseWriter, r *http.Request) {
 			Excerpt:   buildExcerpt(result.Content),
 			Content:   result.Content,
 		})
+	}
+
+	respondJSON(w, http.StatusOK, resp)
+}
+
+func (s *server) handleJobStatus(w http.ResponseWriter, r *http.Request) {
+	if s.db == nil {
+		respondError(w, http.StatusInternalServerError, "database unavailable")
+		return
+	}
+
+	idParam := chi.URLParam(r, "id")
+	jobID, err := uuid.Parse(strings.TrimSpace(idParam))
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "invalid job id")
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+
+	var resp embeddingJobStatus
+	var lastErr sql.NullString
+	var completedAt sql.NullTime
+	var paragraphStatus sql.NullString
+	row := s.db.QueryRowContext(ctx, `
+		select
+			j.id,
+			j.paragraph_id,
+			j.status,
+			j.attempts,
+			j.last_error,
+			j.created_at,
+			j.updated_at,
+			j.completed_at,
+			p.embedding_status
+		from embedding_jobs j
+		left join asc_paragraphs p on p.id = j.paragraph_id
+		where j.id = $1
+	`, jobID)
+
+	err = row.Scan(
+		&resp.JobID,
+		&resp.ParagraphID,
+		&resp.Status,
+		&resp.Attempts,
+		&lastErr,
+		&resp.CreatedAt,
+		&resp.UpdatedAt,
+		&completedAt,
+		&paragraphStatus,
+	)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			respondError(w, http.StatusNotFound, "job not found")
+			return
+		}
+		log.Printf("job status query failed: %v", err)
+		respondError(w, http.StatusInternalServerError, "lookup failed")
+		return
+	}
+
+	if lastErr.Valid {
+		resp.LastError = &lastErr.String
+	}
+	if completedAt.Valid {
+		resp.CompletedAt = &completedAt.Time
+	}
+	if paragraphStatus.Valid {
+		resp.ParagraphEmbeddingStatus = &paragraphStatus.String
 	}
 
 	respondJSON(w, http.StatusOK, resp)
@@ -171,4 +244,16 @@ type searchResult struct {
 	Score     float64 `json:"score"`
 	Excerpt   string  `json:"excerpt"`
 	Content   string  `json:"content"`
+}
+
+type embeddingJobStatus struct {
+	JobID                    uuid.UUID  `json:"job_id"`
+	ParagraphID              uuid.UUID  `json:"paragraph_id"`
+	Status                   string     `json:"status"`
+	Attempts                 int        `json:"attempts"`
+	LastError                *string    `json:"last_error"`
+	CreatedAt                time.Time  `json:"created_at"`
+	UpdatedAt                time.Time  `json:"updated_at"`
+	CompletedAt              *time.Time `json:"completed_at"`
+	ParagraphEmbeddingStatus *string    `json:"paragraph_embedding_status"`
 }

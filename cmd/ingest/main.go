@@ -2,7 +2,6 @@ package main
 
 import (
 	"bufio"
-	"bytes"
 	"context"
 	"crypto/sha256"
 	"database/sql"
@@ -11,13 +10,13 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"io"
 	"log"
-	"net/http"
 	"os"
 	"strings"
 	"time"
 
+	"github.com/JonMunkholm/RevProject1/internal/ai/openai"
+	"github.com/JonMunkholm/RevProject1/internal/embeddingjobs"
 	"github.com/JonMunkholm/RevProject1/internal/stage1"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
@@ -46,25 +45,8 @@ type options struct {
 	OpenAIProject   string
 }
 
-type embeddingResponse struct {
-	Model string `json:"model"`
-	Data  []struct {
-		Embedding []float64 `json:"embedding"`
-	} `json:"data"`
-}
-
 type sqlExecutor interface {
 	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
-}
-
-type embeddingJobMessage struct {
-	JobID           uuid.UUID `json:"job_id"`
-	ParagraphID     uuid.UUID `json:"paragraph_id"`
-	SourceHash      string    `json:"source_hash"`
-	Model           string    `json:"model"`
-	Priority        string    `json:"priority"`
-	MetadataVersion string    `json:"metadata_version"`
-	CreatedAt       time.Time `json:"created_at"`
 }
 
 func main() {
@@ -323,59 +305,6 @@ func formatVectorLiteral(vec []float32) string {
 	return "[" + strings.Join(values, ",") + "]"
 }
 
-func generateEmbedding(ctx context.Context, baseURL, apiKey, projectID, model, input string) ([]float32, string, error) {
-	payload := map[string]any{
-		"model": model,
-		"input": input,
-	}
-	body, err := json.Marshal(payload)
-	if err != nil {
-		return nil, "", err
-	}
-
-	endpoint := strings.TrimRight(baseURL, "/") + "/embeddings"
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
-	if err != nil {
-		return nil, "", err
-	}
-	req.Header.Set("Authorization", "Bearer "+apiKey)
-	req.Header.Set("Content-Type", "application/json")
-	if projectID != "" {
-		req.Header.Set("OpenAI-Project", projectID)
-	}
-
-	client := &http.Client{Timeout: 30 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, "", err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode >= 300 {
-		data, _ := io.ReadAll(resp.Body)
-		return nil, "", fmt.Errorf("openai embeddings failed: %s (%s)", resp.Status, strings.TrimSpace(string(data)))
-	}
-
-	var parsed embeddingResponse
-	if err := json.NewDecoder(resp.Body).Decode(&parsed); err != nil {
-		return nil, "", err
-	}
-	if len(parsed.Data) == 0 || len(parsed.Data[0].Embedding) == 0 {
-		return nil, "", errors.New("embedding response missing vector data")
-	}
-
-	vector := make([]float32, len(parsed.Data[0].Embedding))
-	for i, v := range parsed.Data[0].Embedding {
-		vector[i] = float32(v)
-	}
-
-	modelUsed := parsed.Model
-	if modelUsed == "" {
-		modelUsed = model
-	}
-	return vector, modelUsed, nil
-}
-
 func enqueueAsyncJob(ctx context.Context, db *sql.DB, opts options, content, sourceHash string) error {
 	client, err := newSQSClient(ctx)
 	if err != nil {
@@ -403,7 +332,7 @@ func enqueueAsyncJob(ctx context.Context, db *sql.DB, opts options, content, sou
 		return fmt.Errorf("commit paragraph/job transaction: %w", err)
 	}
 
-	message := embeddingJobMessage{
+	message := embeddingjobs.Message{
 		JobID:           jobID,
 		ParagraphID:     paragraphID,
 		SourceHash:      sourceHash,
@@ -433,7 +362,7 @@ func runSyncEmbedding(ctx context.Context, db *sql.DB, opts options, content, so
 		return fmt.Errorf("set paragraph status: %w", err)
 	}
 
-	embedding, modelUsed, err := generateEmbedding(ctx, opts.OpenAIBase, opts.OpenAIKey, opts.OpenAIProject, opts.Model, content)
+	embedding, modelUsed, err := openai.GenerateEmbedding(ctx, opts.OpenAIBase, opts.OpenAIKey, opts.OpenAIProject, opts.Model, content)
 	if err != nil {
 		updateParagraphStatus(ctx, db, paragraphID, "failed")
 		return fmt.Errorf("generate embedding: %w", err)
@@ -473,7 +402,7 @@ func insertEmbeddingJob(ctx context.Context, exec sqlExecutor, jobID, paragraphI
 	return err
 }
 
-func enqueueEmbeddingJob(ctx context.Context, client *sqs.Client, queueURL string, msg embeddingJobMessage) error {
+func enqueueEmbeddingJob(ctx context.Context, client *sqs.Client, queueURL string, msg embeddingjobs.Message) error {
 	body, err := json.Marshal(msg)
 	if err != nil {
 		return err
