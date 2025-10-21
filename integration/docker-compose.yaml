@@ -14,14 +14,14 @@ services:
       retries: 10
 
   sqs:
-    image: localstack/localstack:2.3
+    image: localstack/localstack:latest
     environment:
-      SERVICES: sqs
+      SERVICES: sqs,s3
       DEBUG: "0"
     ports:
       - "4566:4566"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:4566/health"]
+      test: ["CMD", "curl", "-sf", "http://localhost:4566/_localstack/health"]
       interval: 5s
       timeout: 5s
       retries: 10

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"hash/crc32"
 	"io"
 	"net/http"
 	"strings"
@@ -14,6 +15,16 @@ import (
 
 // GenerateEmbedding calls the OpenAI embeddings API and returns the vector and model used.
 func GenerateEmbedding(ctx context.Context, baseURL, apiKey, projectID, model, input string) ([]float32, string, error) {
+	base := strings.TrimSpace(baseURL)
+	if base == "" {
+		base = "https://api.openai.com/v1"
+	}
+
+	if isLocalEndpoint(base) {
+		vec := simulateEmbedding(model, input)
+		return vec, model, nil
+	}
+
 	payload := map[string]any{
 		"model": model,
 		"input": input,
@@ -23,7 +34,7 @@ func GenerateEmbedding(ctx context.Context, baseURL, apiKey, projectID, model, i
 		return nil, "", err
 	}
 
-	endpoint := strings.TrimRight(baseURL, "/") + "/embeddings"
+	endpoint := strings.TrimRight(base, "/") + "/embeddings"
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
 	if err != nil {
 		return nil, "", err
@@ -64,6 +75,45 @@ func GenerateEmbedding(ctx context.Context, baseURL, apiKey, projectID, model, i
 		modelUsed = model
 	}
 	return vector, modelUsed, nil
+}
+
+func isLocalEndpoint(base string) bool {
+	base = strings.ToLower(base)
+	if strings.HasPrefix(base, "http://localhost") || strings.HasPrefix(base, "https://localhost") {
+		return true
+	}
+	if strings.HasPrefix(base, "http://127.0.0.1") || strings.HasPrefix(base, "https://127.0.0.1") {
+		return true
+	}
+	return false
+}
+
+func simulateEmbedding(model, input string) []float32 {
+	dim := embeddingDimension(model)
+	vector := make([]float32, dim)
+	if len(input) == 0 {
+		return vector
+	}
+
+	seed := crc32.ChecksumIEEE([]byte(model + ":" + input))
+	for i := 0; i < dim; i++ {
+		value := float32((seed>>uint(i%24))&0xFF) / 255.0
+		vector[i] = value
+	}
+	return vector
+}
+
+func embeddingDimension(model string) int {
+	switch strings.ToLower(model) {
+	case "text-embedding-3-large":
+		return 3072
+	case "text-embedding-3-small":
+		return 1536
+	case "text-embedding-ada-002":
+		return 1536
+	default:
+		return 1536
+	}
 }
 
 type embeddingResponse struct {

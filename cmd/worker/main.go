@@ -8,16 +8,18 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/JonMunkholm/RevProject1/internal/ai/openai"
+	"github.com/JonMunkholm/RevProject1/internal/awsutil"
 	"github.com/JonMunkholm/RevProject1/internal/embeddingjobs"
 	"github.com/JonMunkholm/RevProject1/internal/stage1"
 	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/sqs"
 	"github.com/aws/aws-sdk-go-v2/service/sqs/types"
 	"github.com/google/uuid"
@@ -30,6 +32,7 @@ import (
 type options struct {
 	DBURL         string
 	QueueURL      string
+	DLQURL        string
 	OpenAIBase    string
 	OpenAIKey     string
 	OpenAIProject string
@@ -38,6 +41,7 @@ type options struct {
 	WaitSeconds   int32
 	MaxMessages   int32
 	MetricsAddr   string
+	MaxAttempts   int
 }
 
 func main() {
@@ -72,7 +76,7 @@ func run(ctx context.Context) error {
 		return fmt.Errorf("ensure schema: %w", err)
 	}
 
-	client, err := newSQSClient(ctx)
+	client, err := awsutil.NewSQSClient(ctx)
 	if err != nil {
 		return fmt.Errorf("init sqs client: %w", err)
 	}
@@ -89,19 +93,41 @@ func run(ctx context.Context) error {
 	worker.baseVis = clampInt32(opts.WaitSeconds+int32(worker.visGrace.Seconds()), 30, 600)
 
 	log.Printf("worker started; polling queue %s", opts.QueueURL)
+	log.Printf("using OpenAI base %q", opts.OpenAIBase)
 	return worker.loop(ctx)
 }
 
 func parseOptions() (options, error) {
+	metricsAddr := os.Getenv("WORKER_METRICS_ADDR")
+	if metricsAddr == "" {
+		metricsAddr = ":2112"
+	}
+
+	openAIBase := os.Getenv("OPENAI_API_BASE")
+	if openAIBase == "" {
+		openAIBase = "https://api.openai.com/v1"
+	}
+
+	dlqURL := os.Getenv("EMBED_DLQ_URL")
+
+	maxAttempts := 3
+	if raw := strings.TrimSpace(os.Getenv("EMBED_MAX_ATTEMPTS")); raw != "" {
+		if parsed, err := strconv.Atoi(raw); err == nil && parsed > 0 {
+			maxAttempts = parsed
+		}
+	}
+
 	opts := options{
 		QueueURL:    os.Getenv("EMBED_QUEUE_URL"),
 		DBURL:       os.Getenv("DB_URL"),
-		OpenAIBase:  "https://api.openai.com/v1",
+		OpenAIBase:  openAIBase,
 		IndexRole:   "authoritative_current",
 		CreatedBy:   "worker/embedding",
 		WaitSeconds: 20,
 		MaxMessages: 5,
-		MetricsAddr: ":2112",
+		MetricsAddr: metricsAddr,
+		DLQURL:      dlqURL,
+		MaxAttempts: maxAttempts,
 	}
 
 	flag.StringVar(&opts.QueueURL, "queue-url", opts.QueueURL, "Embedding job SQS queue URL (required)")
@@ -110,10 +136,13 @@ func parseOptions() (options, error) {
 	flag.StringVar(&opts.OpenAIProject, "openai-project", os.Getenv("OPENAI_PROJECT_ID"), "OpenAI project ID")
 	flag.StringVar(&opts.IndexRole, "index-role", opts.IndexRole, "Embedding index role")
 	flag.StringVar(&opts.CreatedBy, "created-by", opts.CreatedBy, "created_by value for embeddings")
+	flag.StringVar(&opts.DLQURL, "dlq-url", opts.DLQURL, "Dead-letter SQS queue URL (optional)")
 	wait := int(opts.WaitSeconds)
 	maxMsgs := int(opts.MaxMessages)
+	maxAttemptsFlag := opts.MaxAttempts
 	flag.IntVar(&wait, "wait", wait, "SQS long poll wait time (seconds)")
 	flag.IntVar(&maxMsgs, "max-messages", maxMsgs, "Max messages per poll (1-10)")
+	flag.IntVar(&maxAttemptsFlag, "max-attempts", maxAttemptsFlag, "Max attempts before a job is sent to DLQ")
 	flag.StringVar(&opts.MetricsAddr, "metrics-addr", opts.MetricsAddr, "address for Prometheus metrics server (empty to disable)")
 	flag.Parse()
 
@@ -142,6 +171,10 @@ func parseOptions() (options, error) {
 	}
 	opts.MaxMessages = int32(maxMsgs)
 	opts.WaitSeconds = int32(wait)
+	if maxAttemptsFlag < 1 {
+		maxAttemptsFlag = 1
+	}
+	opts.MaxAttempts = maxAttemptsFlag
 
 	return opts, nil
 }
@@ -160,15 +193,21 @@ func (w *embeddingWorker) loop(ctx context.Context) error {
 		go func() {
 			mux := http.NewServeMux()
 			mux.Handle("/metrics", promhttp.Handler())
+
+			listener, err := net.Listen("tcp", w.opts.MetricsAddr)
+			if err != nil {
+				log.Printf("metrics server listen error: %v", err)
+				return
+			}
+			log.Printf("metrics server listening on %s", listener.Addr().String())
+
 			server := &http.Server{
-				Addr:    w.opts.MetricsAddr,
 				Handler: mux,
 			}
-			if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			if err := server.Serve(listener); err != nil && !errors.Is(err, http.ErrServerClosed) {
 				log.Printf("metrics server error: %v", err)
 			}
 		}()
-		log.Printf("metrics server listening on %s", w.opts.MetricsAddr)
 	}
 
 	for {
@@ -219,7 +258,7 @@ func (w *embeddingWorker) handleMessage(ctx context.Context, msg types.Message) 
 	jobCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()
 
-	paragraphID, status, err := w.markJobInProgress(jobCtx, payload.JobID)
+	paragraphID, status, attempt, err := w.markJobInProgress(jobCtx, payload.JobID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			log.Printf("job %s not found, discarding message", payload.JobID)
@@ -229,10 +268,18 @@ func (w *embeddingWorker) handleMessage(ctx context.Context, msg types.Message) 
 		return fmt.Errorf("mark job in progress: %w", err)
 	}
 
-	if status == "succeeded" || status == "dead_letter" {
-		// Job already handled; ensure message removed.
+	switch status {
+	case "succeeded":
 		if err := w.deleteMessage(ctx, msg); err != nil {
 			log.Printf("delete message after completed job error: %v", err)
+		}
+		return nil
+	case "dead_letter":
+		if err := w.routeToDLQ(ctx, msg, payload, attempt, nil); err != nil {
+			return fmt.Errorf("route to dlq: %w", err)
+		}
+		if err := w.deleteMessage(ctx, msg); err != nil {
+			log.Printf("delete message after dlq error: %v", err)
 		}
 		return nil
 	}
@@ -241,16 +288,40 @@ func (w *embeddingWorker) handleMessage(ctx context.Context, msg types.Message) 
 
 	content, err := w.fetchParagraphContent(jobCtx, paragraphID)
 	if err != nil {
-		w.failJob(jobCtx, payload.JobID, paragraphID, err)
+		deadLetter, failErr := w.failJob(jobCtx, payload.JobID, paragraphID, attempt, err)
+		if failErr != nil {
+			return fmt.Errorf("fetch paragraph: %w", failErr)
+		}
+		if deadLetter {
+			if err := w.routeToDLQ(ctx, msg, payload, attempt, err); err != nil {
+				return fmt.Errorf("route to dlq after fetch failure: %w", err)
+			}
+			if err := w.deleteMessage(ctx, msg); err != nil {
+				log.Printf("delete message after fetch failure dlq error: %v", err)
+			}
+			return nil
+		}
 		return fmt.Errorf("fetch paragraph: %w", err)
 	}
 
 	start := time.Now()
 	vector, modelUsed, err := openai.GenerateEmbedding(jobCtx, w.opts.OpenAIBase, w.opts.OpenAIKey, w.opts.OpenAIProject, payload.Model, content)
 	if err != nil {
-		w.failJob(jobCtx, payload.JobID, paragraphID, err)
+		deadLetter, failErr := w.failJob(jobCtx, payload.JobID, paragraphID, attempt, err)
+		if failErr != nil {
+			return fmt.Errorf("generate embedding: %w", failErr)
+		}
 		if w.metrics != nil {
 			w.metrics.openaiLatency.WithLabelValues("error").Observe(time.Since(start).Seconds())
+		}
+		if deadLetter {
+			if err := w.routeToDLQ(ctx, msg, payload, attempt, err); err != nil {
+				return fmt.Errorf("route to dlq after embedding failure: %w", err)
+			}
+			if err := w.deleteMessage(ctx, msg); err != nil {
+				log.Printf("delete message after embedding failure dlq error: %v", err)
+			}
+			return nil
 		}
 		return fmt.Errorf("generate embedding: %w", err)
 	}
@@ -260,7 +331,19 @@ func (w *embeddingWorker) handleMessage(ctx context.Context, msg types.Message) 
 	}
 
 	if err := w.persistEmbedding(jobCtx, payload, paragraphID, vector, modelUsed); err != nil {
-		w.failJob(jobCtx, payload.JobID, paragraphID, err)
+		deadLetter, failErr := w.failJob(jobCtx, payload.JobID, paragraphID, attempt, err)
+		if failErr != nil {
+			return fmt.Errorf("persist embedding: %w", failErr)
+		}
+		if deadLetter {
+			if err := w.routeToDLQ(ctx, msg, payload, attempt, err); err != nil {
+				return fmt.Errorf("route to dlq after persist failure: %w", err)
+			}
+			if err := w.deleteMessage(ctx, msg); err != nil {
+				log.Printf("delete message after persist failure dlq error: %v", err)
+			}
+			return nil
+		}
 		return fmt.Errorf("persist embedding: %w", err)
 	}
 
@@ -279,10 +362,10 @@ func (w *embeddingWorker) handleMessage(ctx context.Context, msg types.Message) 
 	return nil
 }
 
-func (w *embeddingWorker) markJobInProgress(ctx context.Context, jobID uuid.UUID) (uuid.UUID, string, error) {
+func (w *embeddingWorker) markJobInProgress(ctx context.Context, jobID uuid.UUID) (uuid.UUID, string, int, error) {
 	tx, err := w.db.BeginTx(ctx, nil)
 	if err != nil {
-		return uuid.Nil, "", err
+		return uuid.Nil, "", 0, err
 	}
 
 	defer tx.Rollback()
@@ -297,12 +380,35 @@ func (w *embeddingWorker) markJobInProgress(ctx context.Context, jobID uuid.UUID
 		for update
 	`, jobID).Scan(&status, &attempts, &paragraphID)
 	if err != nil {
-		return uuid.Nil, "", err
+		return uuid.Nil, "", 0, err
 	}
 
 	switch status {
 	case "succeeded", "dead_letter":
-		return paragraphID, status, nil
+		return paragraphID, status, attempts, nil
+	}
+
+	if attempts >= w.opts.MaxAttempts && w.opts.MaxAttempts > 0 {
+		if _, err := tx.ExecContext(ctx, `
+			update embedding_jobs
+			set status = 'dead_letter',
+			    completed_at = now(),
+			    updated_at = now()
+			where id = $1
+		`, jobID); err != nil {
+			return uuid.Nil, "", 0, err
+		}
+		if err := updateParagraphStatus(ctx, tx, paragraphID, "failed"); err != nil {
+			return uuid.Nil, "", 0, err
+		}
+		if err := tx.Commit(); err != nil {
+			return uuid.Nil, "", 0, err
+		}
+		log.Printf("job %s exhausted max attempts (%d); marking dead_letter", jobID, attempts)
+		if w.metrics != nil {
+			w.metrics.jobsDeadLetter.Inc()
+		}
+		return paragraphID, "dead_letter", attempts, nil
 	}
 
 	if _, err := tx.ExecContext(ctx, `
@@ -310,20 +416,21 @@ func (w *embeddingWorker) markJobInProgress(ctx context.Context, jobID uuid.UUID
 		set status = 'in_progress',
 		    attempts = attempts + 1,
 		    updated_at = now()
-		where id = $1
+	where id = $1
 	`, jobID); err != nil {
-		return uuid.Nil, "", err
+		return uuid.Nil, "", 0, err
 	}
+	attempts++
 
 	if err := updateParagraphStatus(ctx, tx, paragraphID, "processing"); err != nil {
-		return uuid.Nil, "", err
+		return uuid.Nil, "", 0, err
 	}
 
 	if err := tx.Commit(); err != nil {
-		return uuid.Nil, "", err
+		return uuid.Nil, "", 0, err
 	}
 
-	return paragraphID, "in_progress", nil
+	return paragraphID, "in_progress", attempts, nil
 }
 
 func (w *embeddingWorker) fetchParagraphContent(ctx context.Context, paragraphID uuid.UUID) (string, error) {
@@ -374,26 +481,42 @@ func (w *embeddingWorker) markJobSucceeded(ctx context.Context, jobID, paragraph
 	return updateParagraphStatus(ctx, w.db, paragraphID, "succeeded")
 }
 
-func (w *embeddingWorker) failJob(ctx context.Context, jobID, paragraphID uuid.UUID, reason error) {
+func (w *embeddingWorker) failJob(ctx context.Context, jobID, paragraphID uuid.UUID, attempt int, reason error) (bool, error) {
 	msg := reason.Error()
+	status := "failed"
+	if w.opts.MaxAttempts > 0 && attempt >= w.opts.MaxAttempts {
+		status = "dead_letter"
+	}
+
 	_, err := w.db.ExecContext(ctx, `
 		update embedding_jobs
-		set status = 'failed',
-		    last_error = $2,
-		    updated_at = now()
+		set status = $2,
+		    last_error = $3,
+		    updated_at = now(),
+		    completed_at = case when $2 = 'dead_letter' then now() else completed_at end
 		where id = $1
-	`, jobID, msg)
+	`, jobID, status, msg)
 	if err != nil {
-		log.Printf("update job failed status error: %v", err)
+		return false, err
 	}
 
 	if err := updateParagraphStatus(ctx, w.db, paragraphID, "failed"); err != nil {
-		log.Printf("update paragraph status error: %v", err)
+		return status == "dead_letter", err
 	}
 
 	if w.metrics != nil {
 		w.metrics.jobsFailed.Inc()
+		if status == "dead_letter" {
+			w.metrics.jobsDeadLetter.Inc()
+		}
 	}
+
+	if status == "dead_letter" {
+		log.Printf("job %s moved to dead_letter after %d attempts: %v", jobID, attempt, reason)
+		return true, nil
+	}
+
+	return false, nil
 }
 
 func (w *embeddingWorker) deleteMessage(ctx context.Context, msg types.Message) error {
@@ -404,6 +527,43 @@ func (w *embeddingWorker) deleteMessage(ctx context.Context, msg types.Message) 
 		QueueUrl:      aws.String(w.opts.QueueURL),
 		ReceiptHandle: msg.ReceiptHandle,
 	})
+	return err
+}
+
+func (w *embeddingWorker) routeToDLQ(ctx context.Context, msg types.Message, payload embeddingjobs.Message, attempt int, lastErr error) error {
+	dlqURL := strings.TrimSpace(w.opts.DLQURL)
+	if dlqURL == "" {
+		return nil
+	}
+	if msg.Body == nil {
+		return errors.New("dlq routing: message missing body")
+	}
+
+	attributes := map[string]types.MessageAttributeValue{
+		"job_attempts": {
+			DataType:    aws.String("Number"),
+			StringValue: aws.String(strconv.Itoa(attempt)),
+		},
+	}
+	if lastErr != nil {
+		errMsg := lastErr.Error()
+		if len(errMsg) > 1024 {
+			errMsg = errMsg[:1024]
+		}
+		attributes["job_error"] = types.MessageAttributeValue{
+			DataType:    aws.String("String"),
+			StringValue: aws.String(errMsg),
+		}
+	}
+
+	_, err := w.client.SendMessage(ctx, &sqs.SendMessageInput{
+		QueueUrl:          aws.String(dlqURL),
+		MessageBody:       aws.String(*msg.Body),
+		MessageAttributes: attributes,
+	})
+	if err == nil {
+		log.Printf("job %s routed to DLQ", payload.JobID)
+	}
 	return err
 }
 
@@ -425,14 +585,6 @@ func (w *embeddingWorker) extendVisibility(ctx context.Context, msg types.Messag
 	if err != nil {
 		log.Printf("change message visibility error: %v", err)
 	}
-}
-
-func newSQSClient(ctx context.Context) (*sqs.Client, error) {
-	cfg, err := config.LoadDefaultConfig(ctx)
-	if err != nil {
-		return nil, err
-	}
-	return sqs.NewFromConfig(cfg), nil
 }
 
 func formatVectorLiteral(vec []float32) string {
@@ -461,9 +613,10 @@ type sqlExecutor interface {
 }
 
 type workerMetrics struct {
-	jobsProcessed prometheus.Counter
-	jobsFailed    prometheus.Counter
-	openaiLatency *prometheus.HistogramVec
+	jobsProcessed  prometheus.Counter
+	jobsFailed     prometheus.Counter
+	jobsDeadLetter prometheus.Counter
+	openaiLatency  *prometheus.HistogramVec
 }
 
 func newWorkerMetrics() *workerMetrics {
@@ -476,6 +629,10 @@ func newWorkerMetrics() *workerMetrics {
 			Name: "embedding_worker_jobs_failed_total",
 			Help: "Total number of embedding jobs that failed",
 		}),
+		jobsDeadLetter: prometheus.NewCounter(prometheus.CounterOpts{
+			Name: "embedding_worker_jobs_dead_letter_total",
+			Help: "Total number of embedding jobs moved to dead letter",
+		}),
 		openaiLatency: prometheus.NewHistogramVec(prometheus.HistogramOpts{
 			Name:    "embedding_worker_openai_latency_seconds",
 			Help:    "Latency for OpenAI embedding requests",
@@ -483,7 +640,7 @@ func newWorkerMetrics() *workerMetrics {
 		}, []string{"result"}),
 	}
 
-	prometheus.MustRegister(m.jobsProcessed, m.jobsFailed, m.openaiLatency)
+	prometheus.MustRegister(m.jobsProcessed, m.jobsFailed, m.jobsDeadLetter, m.openaiLatency)
 	return m
 }
 

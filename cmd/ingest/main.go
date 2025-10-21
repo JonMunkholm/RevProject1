@@ -16,10 +16,10 @@ import (
 	"time"
 
 	"github.com/JonMunkholm/RevProject1/internal/ai/openai"
+	"github.com/JonMunkholm/RevProject1/internal/awsutil"
 	"github.com/JonMunkholm/RevProject1/internal/embeddingjobs"
 	"github.com/JonMunkholm/RevProject1/internal/stage1"
 	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/sqs"
 	"github.com/google/uuid"
 	"github.com/joho/godotenv"
@@ -108,6 +108,11 @@ func run(ctx context.Context) error {
 }
 
 func parseOptions() (options, error) {
+	openAIBase := os.Getenv("OPENAI_API_BASE")
+	if openAIBase == "" {
+		openAIBase = "https://api.openai.com/v1"
+	}
+
 	opts := options{
 		Framework:       "US_GAAP",
 		Topic:           "ASC606",
@@ -118,7 +123,7 @@ func parseOptions() (options, error) {
 		IndexRole:       "authoritative_current",
 		Model:           "text-embedding-3-large",
 		CreatedBy:       "cmd/ingest",
-		OpenAIBase:      "https://api.openai.com/v1",
+		OpenAIBase:      openAIBase,
 	}
 
 	flag.StringVar(&opts.FilePath, "file", "", "Path to the paragraph text file to ingest")
@@ -306,7 +311,7 @@ func formatVectorLiteral(vec []float32) string {
 }
 
 func enqueueAsyncJob(ctx context.Context, db *sql.DB, opts options, content, sourceHash string) error {
-	client, err := newSQSClient(ctx)
+	client, err := awsutil.NewSQSClient(ctx)
 	if err != nil {
 		return fmt.Errorf("init sqs client: %w", err)
 	}
@@ -348,7 +353,7 @@ func enqueueAsyncJob(ctx context.Context, db *sql.DB, opts options, content, sou
 		return fmt.Errorf("enqueue embedding job: %w", err)
 	}
 
-	fmt.Printf("Queued embedding job %s for paragraph %s\n", jobID, paragraphID)
+	fmt.Printf("Queued embedding job %s for paragraph %s (status: GET /api/embedding-jobs/%s)\n", jobID, paragraphID, jobID)
 	return nil
 }
 
@@ -413,14 +418,6 @@ func enqueueEmbeddingJob(ctx context.Context, client *sqs.Client, queueURL strin
 		MessageBody: aws.String(string(body)),
 	})
 	return err
-}
-
-func newSQSClient(ctx context.Context) (*sqs.Client, error) {
-	cfg, err := config.LoadDefaultConfig(ctx)
-	if err != nil {
-		return nil, err
-	}
-	return sqs.NewFromConfig(cfg), nil
 }
 
 func updateParagraphStatus(ctx context.Context, exec sqlExecutor, paragraphID uuid.UUID, status string) error {
