@@ -88,9 +88,9 @@ insert into embedding_jobs (
   metadata_version
 ) values (
   '33333333-3333-3333-3333-333333333333',
-  '99999999-9999-9999-9999-999999999999',
-  'missing-paragraph',
-  'text-embedding-3-large',
+  'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+  'failure-fixture-source',
+  'text-embedding-3-small',
   'normal',
   'v1.0-2025-10-15'
 ) on conflict (id) do update
@@ -155,9 +155,9 @@ wait_for_status '22222222-2222-2222-2222-222222222222' 'succeeded'
 cat <<'JSON' > tmp/message-failure.json
 {
   "job_id": "33333333-3333-3333-3333-333333333333",
-  "paragraph_id": "99999999-9999-9999-9999-999999999999",
-  "source_hash": "missing-paragraph",
-  "model": "text-embedding-3-large",
+  "paragraph_id": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+  "source_hash": "failure-fixture-source",
+  "model": "text-embedding-3-small",
   "priority": "normal",
   "metadata_version": "v1.0-2025-10-15",
   "created_at": "2025-01-01T00:00:00Z"

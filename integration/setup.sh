@@ -37,7 +37,7 @@ DLQ_ARN=$(awslocal sqs get-queue-attributes --queue-url "$DLQ_URL" --attribute-n
 
 awslocal sqs set-queue-attributes \
   --queue-url "$QUEUE_URL" \
-  --attributes RedrivePolicy="{\"deadLetterTargetArn\":\"$DLQ_ARN\",\"maxReceiveCount\":\"5\"}" >/dev/null 2>&1 || true
+  --attributes RedrivePolicy="{\"deadLetterTargetArn\":\"$DLQ_ARN\",\"maxReceiveCount\":\"3\"}" >/dev/null 2>&1 || true
 
 PG_URI="postgres://postgres:password@localhost:5433/revtest?sslmode=disable"
 psql "$PG_URI" -v ON_ERROR_STOP=1 -f schema.sql
@@ -58,6 +58,24 @@ insert into asc_paragraphs (
     'fixture-source',
     'v1.0-2025-10-15',
     'Initial paragraph for integration test.',
+    'pending'
+) on conflict (id) do nothing;
+
+insert into asc_paragraphs (
+    id, framework, topic, asc_reference, guidance_version,
+    source_type, authority_score, source_id, schema_version,
+    content, embedding_status
+) values (
+    'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+    'US_GAAP',
+    'ASC606',
+    'ASC606-10-25-2',
+    'ASU2014-09',
+    'authoritative',
+    1.0,
+    'failure-fixture-source',
+    'v1.0-2025-10-15',
+    'Failure path paragraph used for integration dead-letter test.',
     'pending'
 ) on conflict (id) do nothing;
 SQL

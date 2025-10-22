@@ -20,8 +20,9 @@ import (
 	"github.com/JonMunkholm/RevProject1/internal/embeddingjobs"
 	"github.com/JonMunkholm/RevProject1/internal/stage1"
 	"github.com/aws/aws-sdk-go-v2/aws"
+	cloudwatchtypes "github.com/aws/aws-sdk-go-v2/service/cloudwatch/types"
 	"github.com/aws/aws-sdk-go-v2/service/sqs"
-	"github.com/aws/aws-sdk-go-v2/service/sqs/types"
+	sqstypes "github.com/aws/aws-sdk-go-v2/service/sqs/types"
 	"github.com/google/uuid"
 	"github.com/joho/godotenv"
 	_ "github.com/lib/pq"
@@ -42,6 +43,9 @@ type options struct {
 	MaxMessages   int32
 	MetricsAddr   string
 	MaxAttempts   int
+	CWNamespace   string
+	CWEnabled     bool
+	Environment   string
 }
 
 func main() {
@@ -81,14 +85,28 @@ func run(ctx context.Context) error {
 		return fmt.Errorf("init sqs client: %w", err)
 	}
 
+	promMetrics := newWorkerMetrics()
+
+	var cwPublisher *awsutil.CloudWatchPublisher
+	if opts.CWEnabled {
+		dims := map[string]string{
+			"Service":     "embedding_worker",
+			"Environment": opts.Environment,
+		}
+		pub, err := awsutil.NewCloudWatchPublisher(ctx, opts.CWNamespace, dims)
+		if err != nil {
+			log.Printf("cloudwatch init error: %v (metrics publishing disabled)", err)
+		} else {
+			cwPublisher = pub
+		}
+	}
+
 	worker := &embeddingWorker{
 		db:       db,
 		client:   client,
 		opts:     opts,
+		metrics:  newMetricsReporter(promMetrics, cwPublisher),
 		visGrace: 15 * time.Second,
-	}
-	if strings.TrimSpace(opts.MetricsAddr) != "" {
-		worker.metrics = newWorkerMetrics()
 	}
 	worker.baseVis = clampInt32(opts.WaitSeconds+int32(worker.visGrace.Seconds()), 30, 600)
 
@@ -106,6 +124,23 @@ func parseOptions() (options, error) {
 	openAIBase := os.Getenv("OPENAI_API_BASE")
 	if openAIBase == "" {
 		openAIBase = "https://api.openai.com/v1"
+	}
+
+	cwNamespace := os.Getenv("CLOUDWATCH_NAMESPACE")
+	if strings.TrimSpace(cwNamespace) == "" {
+		cwNamespace = "EGRA/EmbeddingWorker"
+	}
+
+	cwEnabled := true
+	if raw := strings.TrimSpace(os.Getenv("CLOUDWATCH_ENABLED")); raw != "" {
+		if parsed, err := strconv.ParseBool(raw); err == nil {
+			cwEnabled = parsed
+		}
+	}
+
+	envName := strings.TrimSpace(os.Getenv("ENVIRONMENT"))
+	if envName == "" {
+		envName = "local"
 	}
 
 	dlqURL := os.Getenv("EMBED_DLQ_URL")
@@ -128,6 +163,9 @@ func parseOptions() (options, error) {
 		MetricsAddr: metricsAddr,
 		DLQURL:      dlqURL,
 		MaxAttempts: maxAttempts,
+		CWNamespace: cwNamespace,
+		CWEnabled:   cwEnabled,
+		Environment: envName,
 	}
 
 	flag.StringVar(&opts.QueueURL, "queue-url", opts.QueueURL, "Embedding job SQS queue URL (required)")
@@ -144,6 +182,9 @@ func parseOptions() (options, error) {
 	flag.IntVar(&maxMsgs, "max-messages", maxMsgs, "Max messages per poll (1-10)")
 	flag.IntVar(&maxAttemptsFlag, "max-attempts", maxAttemptsFlag, "Max attempts before a job is sent to DLQ")
 	flag.StringVar(&opts.MetricsAddr, "metrics-addr", opts.MetricsAddr, "address for Prometheus metrics server (empty to disable)")
+	flag.StringVar(&opts.CWNamespace, "cloudwatch-namespace", opts.CWNamespace, "CloudWatch metrics namespace")
+	flag.BoolVar(&opts.CWEnabled, "cloudwatch-enabled", opts.CWEnabled, "Enable CloudWatch metric publishing")
+	flag.StringVar(&opts.Environment, "environment", opts.Environment, "Environment label for metrics (defaults to ENVIRONMENT env var)")
 	flag.Parse()
 
 	opts.OpenAIKey = os.Getenv("OPENAI_API_KEY")
@@ -171,6 +212,14 @@ func parseOptions() (options, error) {
 	}
 	opts.MaxMessages = int32(maxMsgs)
 	opts.WaitSeconds = int32(wait)
+	opts.CWNamespace = strings.TrimSpace(opts.CWNamespace)
+	if opts.CWNamespace == "" {
+		opts.CWNamespace = cwNamespace
+	}
+	opts.Environment = strings.TrimSpace(opts.Environment)
+	if opts.Environment == "" {
+		opts.Environment = envName
+	}
 	if maxAttemptsFlag < 1 {
 		maxAttemptsFlag = 1
 	}
@@ -183,7 +232,7 @@ type embeddingWorker struct {
 	db       *sql.DB
 	client   *sqs.Client
 	opts     options
-	metrics  *workerMetrics
+	metrics  *metricsReporter
 	visGrace time.Duration
 	baseVis  int32
 }
@@ -235,15 +284,12 @@ func (w *embeddingWorker) loop(ctx context.Context) error {
 		for _, msg := range resp.Messages {
 			if err := w.handleMessage(ctx, msg); err != nil {
 				log.Printf("message processing failed: %v", err)
-				if w.metrics != nil {
-					w.metrics.jobsFailed.Inc()
-				}
 			}
 		}
 	}
 }
 
-func (w *embeddingWorker) handleMessage(ctx context.Context, msg types.Message) error {
+func (w *embeddingWorker) handleMessage(ctx context.Context, msg sqstypes.Message) error {
 	if msg.Body == nil {
 		return errors.New("message missing body")
 	}
@@ -255,6 +301,7 @@ func (w *embeddingWorker) handleMessage(ctx context.Context, msg types.Message) 
 		return nil
 	}
 
+	jobStart := time.Now()
 	jobCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()
 
@@ -299,8 +346,12 @@ func (w *embeddingWorker) handleMessage(ctx context.Context, msg types.Message) 
 			if err := w.deleteMessage(ctx, msg); err != nil {
 				log.Printf("delete message after fetch failure dlq error: %v", err)
 			}
+			w.metrics.RecordFailure(jobCtx, "dead_letter")
+			w.metrics.RecordJobDuration(jobCtx, "dead_letter", time.Since(jobStart))
 			return nil
 		}
+		w.metrics.RecordFailure(jobCtx, "failed")
+		w.metrics.RecordJobDuration(jobCtx, "failed", time.Since(jobStart))
 		return fmt.Errorf("fetch paragraph: %w", err)
 	}
 
@@ -311,9 +362,7 @@ func (w *embeddingWorker) handleMessage(ctx context.Context, msg types.Message) 
 		if failErr != nil {
 			return fmt.Errorf("generate embedding: %w", failErr)
 		}
-		if w.metrics != nil {
-			w.metrics.openaiLatency.WithLabelValues("error").Observe(time.Since(start).Seconds())
-		}
+		w.metrics.RecordOpenAILatency(jobCtx, "error", time.Since(start))
 		if deadLetter {
 			if err := w.routeToDLQ(ctx, msg, payload, attempt, err); err != nil {
 				return fmt.Errorf("route to dlq after embedding failure: %w", err)
@@ -321,14 +370,16 @@ func (w *embeddingWorker) handleMessage(ctx context.Context, msg types.Message) 
 			if err := w.deleteMessage(ctx, msg); err != nil {
 				log.Printf("delete message after embedding failure dlq error: %v", err)
 			}
+			w.metrics.RecordFailure(jobCtx, "dead_letter")
+			w.metrics.RecordJobDuration(jobCtx, "dead_letter", time.Since(jobStart))
 			return nil
 		}
+		w.metrics.RecordFailure(jobCtx, "failed")
+		w.metrics.RecordJobDuration(jobCtx, "failed", time.Since(jobStart))
 		return fmt.Errorf("generate embedding: %w", err)
 	}
 
-	if w.metrics != nil {
-		w.metrics.openaiLatency.WithLabelValues("success").Observe(time.Since(start).Seconds())
-	}
+	w.metrics.RecordOpenAILatency(jobCtx, "success", time.Since(start))
 
 	if err := w.persistEmbedding(jobCtx, payload, paragraphID, vector, modelUsed); err != nil {
 		deadLetter, failErr := w.failJob(jobCtx, payload.JobID, paragraphID, attempt, err)
@@ -342,8 +393,12 @@ func (w *embeddingWorker) handleMessage(ctx context.Context, msg types.Message) 
 			if err := w.deleteMessage(ctx, msg); err != nil {
 				log.Printf("delete message after persist failure dlq error: %v", err)
 			}
+			w.metrics.RecordFailure(jobCtx, "dead_letter")
+			w.metrics.RecordJobDuration(jobCtx, "dead_letter", time.Since(jobStart))
 			return nil
 		}
+		w.metrics.RecordFailure(jobCtx, "failed")
+		w.metrics.RecordJobDuration(jobCtx, "failed", time.Since(jobStart))
 		return fmt.Errorf("persist embedding: %w", err)
 	}
 
@@ -355,9 +410,8 @@ func (w *embeddingWorker) handleMessage(ctx context.Context, msg types.Message) 
 		log.Printf("delete message error: %v", err)
 	}
 
-	if w.metrics != nil {
-		w.metrics.jobsProcessed.Inc()
-	}
+	w.metrics.RecordSuccess(jobCtx)
+	w.metrics.RecordJobDuration(jobCtx, "success", time.Since(jobStart))
 
 	return nil
 }
@@ -405,9 +459,7 @@ func (w *embeddingWorker) markJobInProgress(ctx context.Context, jobID uuid.UUID
 			return uuid.Nil, "", 0, err
 		}
 		log.Printf("job %s exhausted max attempts (%d); marking dead_letter", jobID, attempts)
-		if w.metrics != nil {
-			w.metrics.jobsDeadLetter.Inc()
-		}
+		w.metrics.RecordFailure(ctx, "dead_letter")
 		return paragraphID, "dead_letter", attempts, nil
 	}
 
@@ -504,13 +556,6 @@ func (w *embeddingWorker) failJob(ctx context.Context, jobID, paragraphID uuid.U
 		return status == "dead_letter", err
 	}
 
-	if w.metrics != nil {
-		w.metrics.jobsFailed.Inc()
-		if status == "dead_letter" {
-			w.metrics.jobsDeadLetter.Inc()
-		}
-	}
-
 	if status == "dead_letter" {
 		log.Printf("job %s moved to dead_letter after %d attempts: %v", jobID, attempt, reason)
 		return true, nil
@@ -519,7 +564,7 @@ func (w *embeddingWorker) failJob(ctx context.Context, jobID, paragraphID uuid.U
 	return false, nil
 }
 
-func (w *embeddingWorker) deleteMessage(ctx context.Context, msg types.Message) error {
+func (w *embeddingWorker) deleteMessage(ctx context.Context, msg sqstypes.Message) error {
 	if msg.ReceiptHandle == nil {
 		return errors.New("message missing receipt handle")
 	}
@@ -530,7 +575,7 @@ func (w *embeddingWorker) deleteMessage(ctx context.Context, msg types.Message) 
 	return err
 }
 
-func (w *embeddingWorker) routeToDLQ(ctx context.Context, msg types.Message, payload embeddingjobs.Message, attempt int, lastErr error) error {
+func (w *embeddingWorker) routeToDLQ(ctx context.Context, msg sqstypes.Message, payload embeddingjobs.Message, attempt int, lastErr error) error {
 	dlqURL := strings.TrimSpace(w.opts.DLQURL)
 	if dlqURL == "" {
 		return nil
@@ -539,7 +584,7 @@ func (w *embeddingWorker) routeToDLQ(ctx context.Context, msg types.Message, pay
 		return errors.New("dlq routing: message missing body")
 	}
 
-	attributes := map[string]types.MessageAttributeValue{
+	attributes := map[string]sqstypes.MessageAttributeValue{
 		"job_attempts": {
 			DataType:    aws.String("Number"),
 			StringValue: aws.String(strconv.Itoa(attempt)),
@@ -550,7 +595,7 @@ func (w *embeddingWorker) routeToDLQ(ctx context.Context, msg types.Message, pay
 		if len(errMsg) > 1024 {
 			errMsg = errMsg[:1024]
 		}
-		attributes["job_error"] = types.MessageAttributeValue{
+		attributes["job_error"] = sqstypes.MessageAttributeValue{
 			DataType:    aws.String("String"),
 			StringValue: aws.String(errMsg),
 		}
@@ -567,7 +612,7 @@ func (w *embeddingWorker) routeToDLQ(ctx context.Context, msg types.Message, pay
 	return err
 }
 
-func (w *embeddingWorker) extendVisibility(ctx context.Context, msg types.Message) {
+func (w *embeddingWorker) extendVisibility(ctx context.Context, msg sqstypes.Message) {
 	if msg.ReceiptHandle == nil {
 		return
 	}
@@ -652,4 +697,70 @@ func clampInt32(val, min, max int32) int32 {
 		return max
 	}
 	return val
+}
+
+type metricsReporter struct {
+	prom *workerMetrics
+	cw   *awsutil.CloudWatchPublisher
+}
+
+func newMetricsReporter(prom *workerMetrics, cw *awsutil.CloudWatchPublisher) *metricsReporter {
+	return &metricsReporter{prom: prom, cw: cw}
+}
+
+func (m *metricsReporter) RecordSuccess(ctx context.Context) {
+	if m == nil {
+		return
+	}
+	if m.prom != nil {
+		m.prom.jobsProcessed.Inc()
+	}
+	m.publishCount(ctx, "JobsProcessed", nil)
+}
+
+func (m *metricsReporter) RecordFailure(ctx context.Context, status string) {
+	if m == nil {
+		return
+	}
+	if m.prom != nil {
+		m.prom.jobsFailed.Inc()
+		if status == "dead_letter" {
+			m.prom.jobsDeadLetter.Inc()
+		}
+	}
+	dims := map[string]string{"Result": status}
+	m.publishCount(ctx, "JobsFailed", dims)
+	if status == "dead_letter" {
+		m.publishCount(ctx, "JobsDeadLetter", dims)
+	}
+}
+
+func (m *metricsReporter) RecordJobDuration(ctx context.Context, result string, duration time.Duration) {
+	if m == nil {
+		return
+	}
+	m.publishValue(ctx, "JobDurationSeconds", duration.Seconds(), map[string]string{"Result": result}, cloudwatchtypes.StandardUnitSeconds)
+}
+
+func (m *metricsReporter) RecordOpenAILatency(ctx context.Context, result string, duration time.Duration) {
+	if m == nil {
+		return
+	}
+	if m.prom != nil {
+		m.prom.openaiLatency.WithLabelValues(result).Observe(duration.Seconds())
+	}
+	m.publishValue(ctx, "OpenAIRequestSeconds", duration.Seconds(), map[string]string{"Result": result}, cloudwatchtypes.StandardUnitSeconds)
+}
+
+func (m *metricsReporter) publishCount(ctx context.Context, name string, dims map[string]string) {
+	m.publishValue(ctx, name, 1, dims, cloudwatchtypes.StandardUnitCount)
+}
+
+func (m *metricsReporter) publishValue(ctx context.Context, name string, value float64, dims map[string]string, unit cloudwatchtypes.StandardUnit) {
+	if m == nil || m.cw == nil {
+		return
+	}
+	if err := m.cw.Publish(ctx, name, value, unit, dims); err != nil {
+		log.Printf("cloudwatch publish error (%s): %v", name, err)
+	}
 }
