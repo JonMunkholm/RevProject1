@@ -72,3 +72,31 @@ func CanViewCompanySettings(ctx context.Context) bool {
 	}
 	return false
 }
+
+func CanUseAsOf(ctx context.Context) bool {
+	if caps, ok := capabilitiesFromContext(ctx); ok {
+		return caps.CanUseAsOf
+	}
+	return false
+}
+
+func CanIncludeSuperseded(ctx context.Context) bool {
+	if caps, ok := capabilitiesFromContext(ctx); ok {
+		return caps.CanIncludeSuperseded
+	}
+	return false
+}
+
+func CanIncludeInterpretive(ctx context.Context) bool {
+	if caps, ok := capabilitiesFromContext(ctx); ok {
+		return caps.CanIncludeInterpretive
+	}
+	return false
+}
+
+func CanIncludeInternal(ctx context.Context) bool {
+	if caps, ok := capabilitiesFromContext(ctx); ok {
+		return caps.CanIncludeInternal
+	}
+	return false
+}

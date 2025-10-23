@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -43,6 +44,7 @@ type options struct {
 	OpenAIBase      string
 	OpenAIKey       string
 	OpenAIProject   string
+	DisableAsync    bool
 }
 
 type sqlExecutor interface {
@@ -100,7 +102,11 @@ func run(ctx context.Context) error {
 		return fmt.Errorf("check existing paragraph: %w", err)
 	}
 
-	if strings.TrimSpace(opts.QueueURL) != "" {
+	useAsync := strings.TrimSpace(opts.QueueURL) != "" && !opts.DisableAsync
+	if strings.TrimSpace(opts.QueueURL) != "" && opts.DisableAsync {
+		log.Printf("async embedding disabled; running synchronous ingest (queue=%s)", opts.QueueURL)
+	}
+	if useAsync {
 		return enqueueAsyncJob(ctx, db, opts, content, sourceID)
 	}
 
@@ -124,6 +130,7 @@ func parseOptions() (options, error) {
 		Model:           "text-embedding-3-large",
 		CreatedBy:       "cmd/ingest",
 		OpenAIBase:      openAIBase,
+		DisableAsync:    envBool("ASYNC_EMBEDDING_DISABLED"),
 	}
 
 	flag.StringVar(&opts.FilePath, "file", "", "Path to the paragraph text file to ingest")
@@ -140,6 +147,7 @@ func parseOptions() (options, error) {
 	flag.StringVar(&opts.Model, "model", opts.Model, "Embedding model identifier")
 	flag.StringVar(&opts.CreatedBy, "created-by", opts.CreatedBy, "Created_by column value for embeddings")
 	flag.StringVar(&opts.OpenAIBase, "openai-base", opts.OpenAIBase, "OpenAI base URL (defaults to https://api.openai.com/v1)")
+	flag.BoolVar(&opts.DisableAsync, "disable-async", opts.DisableAsync, "Force synchronous ingest even when queue URL is configured")
 	flag.Parse()
 
 	if opts.FilePath == "" {
@@ -188,6 +196,18 @@ func (o options) validate() error {
 		return errors.New("schema version is required")
 	}
 	return nil
+}
+
+func envBool(key string) bool {
+	raw := strings.TrimSpace(os.Getenv(key))
+	if raw == "" {
+		return false
+	}
+	val, err := strconv.ParseBool(raw)
+	if err != nil {
+		return false
+	}
+	return val
 }
 
 func extractContent(path string) (string, map[string]string, error) {

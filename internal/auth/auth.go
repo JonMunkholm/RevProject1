@@ -62,15 +62,20 @@ func (r Role) Meets(min Role) bool {
 type JWTreq struct {
 	UserID      uuid.UUID
 	CompanyID   uuid.UUID
+	TenantID    uuid.UUID
 	CurrentRole Role
 	Roles       map[uuid.UUID]Role
+	Scopes      []string
 }
 
 type CustomClaims struct {
 	jwt.RegisteredClaims
 	CompanyID   string            `json:"companyID"`
+	TenantID    string            `json:"tenantID,omitempty"`
 	CurrentRole string            `json:"currentRole,omitempty"`
 	Roles       map[string]string `json:"roles,omitempty"`
+	Scopes      []string          `json:"scp,omitempty"`
+	Scope       string            `json:"scope,omitempty"`
 }
 
 type TokenType string
@@ -104,6 +109,16 @@ func MakeJWT(req JWTreq, tokenSecret string, expiresIn time.Duration) (string, e
 		roleClaims[companyID.String()] = role.String()
 	}
 
+	tenantID := req.TenantID
+	if tenantID == uuid.Nil {
+		tenantID = req.CompanyID
+	}
+
+	var scopeString string
+	if len(req.Scopes) > 0 {
+		scopeString = strings.Join(req.Scopes, " ")
+	}
+
 	claims := CustomClaims{
 		RegisteredClaims: jwt.RegisteredClaims{
 			Issuer:    string(TokenTypeAccess),
@@ -112,8 +127,11 @@ func MakeJWT(req JWTreq, tokenSecret string, expiresIn time.Duration) (string, e
 			Subject:   req.UserID.String(),
 		},
 		CompanyID:   req.CompanyID.String(),
+		TenantID:    tenantID.String(),
 		CurrentRole: req.CurrentRole.String(),
 		Roles:       roleClaims,
+		Scopes:      req.Scopes,
+		Scope:       scopeString,
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)

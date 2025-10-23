@@ -14,17 +14,26 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/lib/pq"
 )
 
-// QueryParams captures user input for a Stage 1 query.
+// QueryParams captures user input and guardrail selections for a search request.
 type QueryParams struct {
-	Query string
-	Limit int
+	Query               string
+	Limit               int
+	IncludeSuperseded   bool
+	IncludeInterpretive bool
+	IncludeInternal     bool
+	AsOf                *time.Time
+	TenantID            uuid.UUID
 }
+
+var ErrTenantRequired = errors.New("retrieval: tenant context required for internal content")
 
 // Result represents a ranked hit returned to the API layer.
 type Result struct {
@@ -40,22 +49,24 @@ type Result struct {
 
 // Service executes semantic search using a database handle and embedding client.
 type Service struct {
-	db        *sql.DB
-	http      *http.Client
-	openAIURL string
-	openAIKey string
-	model     string
-	projectID string
+	db                *sql.DB
+	http              *http.Client
+	openAIURL         string
+	openAIKey         string
+	model             string
+	projectID         string
+	guardrailsEnabled bool
 }
 
 // Config configures a retrieval Service.
 type Config struct {
-	DB        *sql.DB
-	HTTP      *http.Client
-	OpenAIURL string
-	OpenAIKey string
-	Model     string
-	ProjectID string
+	DB                *sql.DB
+	HTTP              *http.Client
+	OpenAIURL         string
+	OpenAIKey         string
+	Model             string
+	ProjectID         string
+	GuardrailsEnabled bool
 }
 
 // NewService builds a Service backed by the supplied components.
@@ -79,12 +90,13 @@ func NewService(cfg Config) (*Service, error) {
 		model = "text-embedding-3-large"
 	}
 	return &Service{
-		db:        cfg.DB,
-		http:      client,
-		openAIURL: strings.TrimRight(base, "/"),
-		openAIKey: cfg.OpenAIKey,
-		model:     model,
-		projectID: cfg.ProjectID,
+		db:                cfg.DB,
+		http:              client,
+		openAIURL:         strings.TrimRight(base, "/"),
+		openAIKey:         cfg.OpenAIKey,
+		model:             model,
+		projectID:         cfg.ProjectID,
+		guardrailsEnabled: cfg.GuardrailsEnabled,
 	}, nil
 }
 
@@ -101,7 +113,7 @@ type embeddingResponse struct {
 }
 
 // Search issues the Stage 1 cosine query for the supplied text.
-func (s *Service) Search(ctx context.Context, params QueryParams) ([]Result, error) {
+func (s *Service) Search(ctx context.Context, params QueryParams) (results []Result, err error) {
 	if s == nil {
 		return nil, errors.New("retrieval: service is nil")
 	}
@@ -114,6 +126,12 @@ func (s *Service) Search(ctx context.Context, params QueryParams) ([]Result, err
 		limit = 5
 	}
 
+	if s.guardrailsEnabled {
+		if params.IncludeInternal && params.TenantID == uuid.Nil {
+			return nil, ErrTenantRequired
+		}
+	}
+
 	vector, err := s.generateEmbedding(ctx, query)
 	if err != nil {
 		return nil, err
@@ -121,13 +139,53 @@ func (s *Service) Search(ctx context.Context, params QueryParams) ([]Result, err
 
 	vectorLiteral := formatVectorLiteral(vector)
 
-	rows, err := s.db.QueryContext(ctx, searchSQL, vectorLiteral, limit)
+	args := []interface{}{vectorLiteral, limit}
+	sqlText := searchLegacySQL
+
+	var (
+		runner queryer = s.db
+		tx     *sql.Tx
+	)
+
+	if s.guardrailsEnabled {
+		tx, err = s.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+		if err != nil {
+			return nil, err
+		}
+		runner = tx
+
+		if err = s.configureGuardrailSession(ctx, tx, params); err != nil {
+			_ = tx.Rollback()
+			return nil, err
+		}
+
+		sqlText, args, err = s.buildGuardrailSQL(vectorLiteral, limit, params)
+		if err != nil {
+			_ = tx.Rollback()
+			return nil, err
+		}
+
+		defer func() {
+			if tx == nil {
+				return
+			}
+			if err != nil {
+				_ = tx.Rollback()
+				return
+			}
+			if commitErr := tx.Commit(); commitErr != nil {
+				err = commitErr
+			}
+		}()
+	}
+
+	rows, err := runner.QueryContext(ctx, sqlText, args...)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
-	results := make([]Result, 0, limit)
+	results = make([]Result, 0, limit)
 	for rows.Next() {
 		var r Result
 		if err := rows.Scan(
@@ -204,7 +262,111 @@ func formatVectorLiteral(vec []float32) string {
 	return "[" + strings.Join(values, ",") + "]"
 }
 
-const searchSQL = `
+type execer interface {
+	ExecContext(ctx context.Context, query string, args ...interface{}) (sql.Result, error)
+}
+
+type queryer interface {
+	QueryContext(ctx context.Context, query string, args ...interface{}) (*sql.Rows, error)
+}
+
+func (s *Service) configureGuardrailSession(ctx context.Context, exec execer, params QueryParams) error {
+	boolStr := func(v bool) string {
+		return strconv.FormatBool(v)
+	}
+
+	settings := []struct {
+		key   string
+		value string
+	}{
+		{"app.guardrails.enabled", "true"},
+		{"app.guardrails.include_superseded", boolStr(params.IncludeSuperseded)},
+		{"app.guardrails.include_interpretive", boolStr(params.IncludeInterpretive)},
+		{"app.guardrails.include_internal", boolStr(params.IncludeInternal)},
+	}
+
+	tenantValue := ""
+	if params.TenantID != uuid.Nil {
+		tenantValue = params.TenantID.String()
+	}
+	settings = append(settings, struct {
+		key   string
+		value string
+	}{"app.guardrails.tenant_id", tenantValue})
+
+	asOfValue := ""
+	if params.AsOf != nil {
+		asOfValue = params.AsOf.UTC().Format(time.RFC3339)
+	}
+	settings = append(settings, struct {
+		key   string
+		value string
+	}{"app.guardrails.as_of", asOfValue})
+
+	for _, setting := range settings {
+		if _, err := exec.ExecContext(ctx, "select set_config($1, $2, true)", setting.key, setting.value); err != nil {
+			return fmt.Errorf("set_config %s: %w", setting.key, err)
+		}
+	}
+
+	return nil
+}
+
+func (s *Service) buildGuardrailSQL(vectorLiteral string, limit int, params QueryParams) (string, []interface{}, error) {
+	args := []interface{}{vectorLiteral, limit}
+	filters := make([]string, 0, 6)
+	next := 3
+
+	if !params.IncludeSuperseded {
+		filters = append(filters, "p.superseded = false")
+	}
+
+	if params.AsOf != nil {
+		asOf := params.AsOf.UTC()
+		filters = append(filters, fmt.Sprintf("(p.effective_date IS NULL OR p.effective_date <= $%d)", next))
+		args = append(args, asOf)
+		next++
+	} else {
+		filters = append(filters, "(p.effective_date IS NULL OR p.effective_date <= now())")
+	}
+
+	sourceTypes := []string{"authoritative"}
+	if params.IncludeInterpretive {
+		sourceTypes = append(sourceTypes, "interpretive")
+	}
+	if params.IncludeInternal {
+		sourceTypes = append(sourceTypes, "internal")
+	}
+
+	if len(sourceTypes) == 1 {
+		filters = append(filters, "p.source_type = 'authoritative'")
+	} else {
+		filters = append(filters, fmt.Sprintf("p.source_type = ANY($%d)", next))
+		args = append(args, pq.StringArray(sourceTypes))
+		next++
+	}
+
+	if params.IncludeInternal {
+		filters = append(filters, fmt.Sprintf("(p.tenant_id IS NULL OR p.tenant_id = $%d)", next))
+		args = append(args, params.TenantID)
+		next++
+	} else {
+		filters = append(filters, "(p.tenant_id IS NULL)")
+	}
+
+	var builder strings.Builder
+	builder.WriteString(guardrailSelectClause)
+	if len(filters) > 0 {
+		builder.WriteString("WHERE ")
+		builder.WriteString(strings.Join(filters, "\n  AND "))
+		builder.WriteString("\n")
+	}
+	builder.WriteString(guardrailOrderClause)
+
+	return builder.String(), args, nil
+}
+
+const searchLegacySQL = `
 with query as (
 	select $1::vector as embedding
 )
@@ -220,5 +382,27 @@ select
 from asc_embeddings e
 join asc_paragraphs p on p.id = e.paragraph_id
 join query on true
+order by e.embedding <=> query.embedding
+limit $2`
+
+const guardrailSelectClause = `
+with query as (
+	select $1::vector as embedding
+)
+select
+	p.id as paragraph_id,
+	p.asc_reference,
+	p.content,
+	1 - (e.embedding <=> query.embedding) as score,
+	p.guidance_version,
+	p.source_type,
+	p.authority_score,
+	p.schema_version
+from asc_embeddings e
+join asc_paragraphs p on p.id = e.paragraph_id
+join query on true
+`
+
+const guardrailOrderClause = `
 order by e.embedding <=> query.embedding
 limit $2`

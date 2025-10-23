@@ -174,6 +174,7 @@ func (l *Login) issueSession(w http.ResponseWriter, r *http.Request, user databa
 	jwtPayload := JWTreq{
 		UserID:      user.ID,
 		CompanyID:   user.CompanyID,
+		TenantID:    user.CompanyID,
 		CurrentRole: currentRole,
 		Roles:       roles,
 	}

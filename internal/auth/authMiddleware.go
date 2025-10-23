@@ -18,8 +18,10 @@ var authContextKey = contextKey{}
 type Session struct {
 	UserID       uuid.UUID
 	CompanyID    uuid.UUID
+	TenantID     uuid.UUID
 	CurrentRole  Role
 	Roles        map[uuid.UUID]Role
+	Scopes       map[string]struct{}
 	Capabilities Capabilities
 }
 
@@ -31,6 +33,18 @@ func (s Session) RoleFor(companyID uuid.UUID) (Role, bool) {
 	return role, ok
 }
 
+func (s Session) HasScope(scope string) bool {
+	if scope == "" || len(s.Scopes) == 0 {
+		return false
+	}
+	normalized := strings.ToLower(strings.TrimSpace(scope))
+	if normalized == "" {
+		return false
+	}
+	_, ok := s.Scopes[normalized]
+	return ok
+}
+
 // SessionFromContext retrieves the Session stored by JWTMiddleware.
 func SessionFromContext(ctx context.Context) (Session, bool) {
 	if ctx == nil {
@@ -39,6 +53,14 @@ func SessionFromContext(ctx context.Context) (Session, bool) {
 	session, ok := ctx.Value(authContextKey).(Session)
 	return session, ok
 }
+
+const (
+	scopeGuardrailsAll          = "guardrails.all"
+	scopeGuardrailsSuperseded   = "guardrails.include_superseded"
+	scopeGuardrailsInterpretive = "guardrails.include_interpretive"
+	scopeGuardrailsInternal     = "guardrails.include_internal"
+	scopeGuardrailsAsOf         = "guardrails.use_asof"
+)
 
 // JWTMiddleware validates access tokens and enforces authentication for protected routes.
 func JWTMiddleware(secret string) func(http.Handler) http.Handler {
@@ -73,6 +95,15 @@ func JWTMiddleware(secret string) func(http.Handler) http.Handler {
 				return
 			}
 
+			tenantID := companyID
+			if rawTenant := strings.TrimSpace(claims.TenantID); rawTenant != "" {
+				if parsedTenant, parseErr := uuid.Parse(rawTenant); parseErr == nil {
+					tenantID = parsedTenant
+				} else {
+					log.Printf("auth: skipping invalid tenant id %q for user %s", rawTenant, userID)
+				}
+			}
+
 			roleMap := make(map[uuid.UUID]Role, len(claims.Roles))
 			for company, value := range claims.Roles {
 				companyUUID, parseErr := uuid.Parse(company)
@@ -92,12 +123,49 @@ func JWTMiddleware(secret string) func(http.Handler) http.Handler {
 				}
 			}
 
+			scopeSet := make(map[string]struct{})
+			addScope := func(scope string) {
+				normalized := strings.ToLower(strings.TrimSpace(scope))
+				if normalized == "" {
+					return
+				}
+				scopeSet[normalized] = struct{}{}
+			}
+			for _, scope := range claims.Scopes {
+				addScope(scope)
+			}
+			for _, scope := range strings.Fields(claims.Scope) {
+				addScope(scope)
+			}
+
 			session := Session{
 				UserID:       userID,
 				CompanyID:    companyID,
+				TenantID:     tenantID,
 				CurrentRole:  currentRole,
 				Roles:        roleMap,
+				Scopes:       scopeSet,
 				Capabilities: capabilitiesForRole(currentRole),
+			}
+
+			if _, ok := scopeSet[scopeGuardrailsAll]; ok {
+				session.Capabilities.CanIncludeSuperseded = true
+				session.Capabilities.CanIncludeInterpretive = true
+				session.Capabilities.CanIncludeInternal = true
+				session.Capabilities.CanUseAsOf = true
+			} else {
+				if _, ok := scopeSet[scopeGuardrailsSuperseded]; ok {
+					session.Capabilities.CanIncludeSuperseded = true
+				}
+				if _, ok := scopeSet[scopeGuardrailsInterpretive]; ok {
+					session.Capabilities.CanIncludeInterpretive = true
+				}
+				if _, ok := scopeSet[scopeGuardrailsInternal]; ok {
+					session.Capabilities.CanIncludeInternal = true
+				}
+				if _, ok := scopeSet[scopeGuardrailsAsOf]; ok {
+					session.Capabilities.CanUseAsOf = true
+				}
 			}
 
 			ctx := context.WithValue(r.Context(), authContextKey, session)
@@ -171,6 +239,10 @@ func capabilitiesForRole(role Role) Capabilities {
 	if role.Meets(RoleAdmin) {
 		caps.CanManageCompanyCredentials = true
 		caps.CanManagePersonalCredentials = true
+		caps.CanUseAsOf = true
+		caps.CanIncludeSuperseded = true
+		caps.CanIncludeInterpretive = true
+		caps.CanIncludeInternal = true
 	}
 
 	return caps

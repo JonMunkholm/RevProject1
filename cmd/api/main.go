@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -19,13 +20,15 @@ import (
 	"github.com/joho/godotenv"
 	_ "github.com/lib/pq"
 
+	"github.com/JonMunkholm/RevProject1/internal/contextutil"
 	"github.com/JonMunkholm/RevProject1/internal/retrieval"
 	"github.com/JonMunkholm/RevProject1/internal/stage1"
 )
 
 type server struct {
-	retrieval *retrieval.Service
-	db        *sql.DB
+	retrieval         *retrieval.Service
+	db                *sql.DB
+	guardrailsEnabled bool
 }
 
 func main() {
@@ -52,6 +55,7 @@ func run() error {
 	if strings.TrimSpace(port) == "" {
 		port = ":8080"
 	}
+	guardrailsEnabled := parseBoolEnv("GUARDRAILS_ENABLED", false)
 
 	db, err := sql.Open("postgres", dbURL)
 	if err != nil {
@@ -73,16 +77,17 @@ func run() error {
 	}
 
 	retrievalSvc, err := retrieval.NewService(retrieval.Config{
-		DB:        db,
-		OpenAIKey: openAIKey,
-		OpenAIURL: openAIBase,
-		ProjectID: openAIProject,
+		DB:                db,
+		OpenAIKey:         openAIKey,
+		OpenAIURL:         openAIBase,
+		ProjectID:         openAIProject,
+		GuardrailsEnabled: guardrailsEnabled,
 	})
 	if err != nil {
 		return fmt.Errorf("init retrieval: %w", err)
 	}
 
-	srv := &server{retrieval: retrievalSvc, db: db}
+	srv := &server{retrieval: retrievalSvc, db: db, guardrailsEnabled: guardrailsEnabled}
 	router := chi.NewRouter()
 	router.Use(middleware.Logger)
 	router.Get("/", func(w http.ResponseWriter, r *http.Request) {
@@ -107,11 +112,85 @@ func (s *server) handleSearch(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
 	defer cancel()
 
-	results, err := s.retrieval.Search(ctx, retrieval.QueryParams{
+	params := retrieval.QueryParams{
 		Query: query,
 		Limit: limit,
-	})
+	}
+
+	if session, ok := contextutil.Session(ctx); ok {
+		params.TenantID = session.TenantID
+	}
+
+	if s.guardrailsEnabled {
+		qp := r.URL.Query()
+
+		if value, provided, err := parseOptionalBoolParam(qp.Get("includeSuperseded")); err != nil {
+			log.Printf("search: invalid includeSuperseded value: %v", err)
+			respondError(w, http.StatusBadRequest, "invalid includeSuperseded value")
+			return
+		} else if provided && value {
+			if !contextutil.CanIncludeSuperseded(ctx) {
+				respondError(w, http.StatusForbidden, "includeSuperseded requires elevated permission")
+				return
+			}
+			params.IncludeSuperseded = true
+		}
+
+		if value, provided, err := parseOptionalBoolParam(qp.Get("includeInterpretive")); err != nil {
+			log.Printf("search: invalid includeInterpretive value: %v", err)
+			respondError(w, http.StatusBadRequest, "invalid includeInterpretive value")
+			return
+		} else if provided && value {
+			if !contextutil.CanIncludeInterpretive(ctx) {
+				respondError(w, http.StatusForbidden, "includeInterpretive requires elevated permission")
+				return
+			}
+			params.IncludeInterpretive = true
+		}
+
+		if value, provided, err := parseOptionalBoolParam(qp.Get("includeInternal")); err != nil {
+			log.Printf("search: invalid includeInternal value: %v", err)
+			respondError(w, http.StatusBadRequest, "invalid includeInternal value")
+			return
+		} else if provided && value {
+			if !contextutil.CanIncludeInternal(ctx) {
+				respondError(w, http.StatusForbidden, "includeInternal requires elevated permission")
+				return
+			}
+			if params.TenantID == uuid.Nil {
+				respondError(w, http.StatusBadRequest, "tenant context required for internal content")
+				return
+			}
+			params.IncludeInternal = true
+		}
+
+		if rawAsOf := strings.TrimSpace(qp.Get("asOf")); rawAsOf != "" {
+			if !contextutil.CanUseAsOf(ctx) {
+				respondError(w, http.StatusForbidden, "asOf parameter requires elevated permission")
+				return
+			}
+			asOf, err := parseAsOfValue(rawAsOf)
+			if err != nil {
+				log.Printf("search: invalid asOf value: %v", err)
+				respondError(w, http.StatusBadRequest, "invalid asOf value")
+				return
+			}
+			params.AsOf = &asOf
+		}
+	} else {
+		// Guardrails disabled: reject guardrail-specific query params to avoid ambiguous behaviour.
+		if hasGuardrailParam(r.URL.Query()) {
+			respondError(w, http.StatusBadRequest, "guardrail parameters are unavailable while guardrails are disabled")
+			return
+		}
+	}
+
+	results, err := s.retrieval.Search(ctx, params)
 	if err != nil {
+		if errors.Is(err, retrieval.ErrTenantRequired) {
+			respondError(w, http.StatusBadRequest, "tenant context required for internal content")
+			return
+		}
 		log.Printf("retrieval error: %v", err)
 		respondError(w, http.StatusInternalServerError, "search failed")
 		return
@@ -216,6 +295,60 @@ func parseLimit(raw string) int {
 
 func respondError(w http.ResponseWriter, status int, message string) {
 	respondJSON(w, status, map[string]string{"error": message})
+}
+
+func parseBoolEnv(key string, def bool) bool {
+	raw := strings.TrimSpace(os.Getenv(key))
+	if raw == "" {
+		return def
+	}
+	value, err := strconv.ParseBool(raw)
+	if err != nil {
+		return def
+	}
+	return value
+}
+
+func parseOptionalBoolParam(raw string) (bool, bool, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return false, false, nil
+	}
+	value, err := strconv.ParseBool(raw)
+	if err != nil {
+		return false, true, err
+	}
+	return value, true, nil
+}
+
+func parseAsOfValue(raw string) (time.Time, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return time.Time{}, errors.New("empty asOf value")
+	}
+	if ts, err := time.Parse(time.RFC3339, raw); err == nil {
+		return ts, nil
+	}
+	if ts, err := time.Parse("2006-01-02", raw); err == nil {
+		return ts, nil
+	}
+	return time.Time{}, fmt.Errorf("unsupported asOf format: %s", raw)
+}
+
+func hasGuardrailParam(values url.Values) bool {
+	if len(values["includeSuperseded"]) > 0 {
+		return true
+	}
+	if len(values["includeInterpretive"]) > 0 {
+		return true
+	}
+	if len(values["includeInternal"]) > 0 {
+		return true
+	}
+	if len(values["asOf"]) > 0 {
+		return true
+	}
+	return false
 }
 
 func respondJSON(w http.ResponseWriter, status int, payload any) {

@@ -7,6 +7,10 @@ type Capabilities struct {
 	CanViewProviderCredentials   bool
 	CanManagePersonalCredentials bool
 	CanManageCompanyCredentials  bool
+	CanUseAsOf                   bool
+	CanIncludeSuperseded         bool
+	CanIncludeInterpretive       bool
+	CanIncludeInternal           bool
 }
 
 type capabilityKey struct{}
