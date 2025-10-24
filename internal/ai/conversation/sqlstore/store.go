@@ -24,12 +24,17 @@ func (s *Store) CreateSession(ctx context.Context, params conversation.CreateSes
 		return conversation.Session{}, err
 	}
 
+	var id interface{}
+	if params.ID != uuid.Nil {
+		id = params.ID
+	}
 	row, err := s.queries.CreateAIConversationSession(ctx, database.CreateAIConversationSessionParams{
+		ID:         id,
 		CompanyID:  params.CompanyID,
 		UserID:     params.UserID,
 		ProviderID: params.ProviderID,
 		Title:      nullString(params.Title),
-		Column5:    meta,
+		Metadata:   meta,
 	})
 	if err != nil {
 		return conversation.Session{}, err

@@ -1,16 +1,18 @@
 -- name: CreateAIConversationSession :one
 INSERT INTO ai_conversation_sessions (
+    id,
     company_id,
     user_id,
     provider_id,
     title,
     metadata
 ) VALUES (
-    $1,
-    $2,
-    $3,
-    $4,
-    COALESCE($5, '{}'::jsonb)
+    COALESCE(sqlc.narg(id), gen_random_uuid()),
+    sqlc.arg(company_id),
+    sqlc.arg(user_id),
+    sqlc.arg(provider_id),
+    sqlc.arg(title),
+    COALESCE(sqlc.arg(metadata), '{}'::jsonb)
 )
 RETURNING *;
 

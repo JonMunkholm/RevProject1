@@ -14,6 +14,7 @@ import (
 	catalogProvider "github.com/JonMunkholm/RevProject1/internal/ai/provider/catalog"
 	geminiProvider "github.com/JonMunkholm/RevProject1/internal/ai/provider/gemini"
 	openaiProvider "github.com/JonMunkholm/RevProject1/internal/ai/provider/openai"
+	aitool "github.com/JonMunkholm/RevProject1/internal/ai/tool"
 	"github.com/JonMunkholm/RevProject1/internal/database"
 	"github.com/JonMunkholm/RevProject1/internal/handler"
 	_ "github.com/lib/pq"
@@ -115,6 +116,10 @@ func (a *App) initAI() {
 		DefaultProvider: defaultAIProvider,
 		Logger:          clientLogger,
 		Credentials:     a.aiResolver,
+		Tools: []ai.Tool{
+			aitool.FetchCustomerTool{Store: a.db},
+			aitool.CreateTicketTool{},
+		},
 	}
 
 	client, err := ai.NewClient(clientConfig)

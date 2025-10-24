@@ -99,6 +99,7 @@ type createConversationRequest struct {
 type appendMessageRequest struct {
 	Content  string         `json:"content"`
 	Role     string         `json:"role,omitempty"`
+	Provider string         `json:"provider,omitempty"`
 	Metadata map[string]any `json:"metadata,omitempty"`
 }
 
@@ -303,9 +304,10 @@ func (h *AI) ChatAppendMessage(w http.ResponseWriter, r *http.Request) {
 
 	var req appendMessageRequest
 	if err := decodeJSON(r, &req); err != nil {
-		h.writeChatTranscript(w, r.Context(), pages.ChatTranscriptProps{ConversationID: sessionID.String(), ErrorMessage: "Invalid request payload."})
+		h.writeChatTranscript(w, r.Context(), pages.ChatTranscriptProps{ConversationID: sessionID.String(), ErrorMessage: "Invalid request payload.", ProviderID: strings.TrimSpace(req.Provider)})
 		return
 	}
+	providerHint := strings.TrimSpace(req.Provider)
 
 	role := strings.TrimSpace(req.Role)
 	if role == "" {
@@ -314,23 +316,31 @@ func (h *AI) ChatAppendMessage(w http.ResponseWriter, r *http.Request) {
 
 	content := strings.TrimSpace(req.Content)
 	if content == "" {
-		h.writeChatTranscript(w, r.Context(), pages.ChatTranscriptProps{ConversationID: sessionID.String(), ErrorMessage: "Message content is required."})
+		h.writeChatTranscript(w, r.Context(), pages.ChatTranscriptProps{
+			ConversationID: sessionID.String(),
+			ErrorMessage:   "Message content is required.",
+			ProviderID:     providerHint,
+		})
 		return
 	}
 
 	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
 	defer cancel()
 
-	sessionRecord, messages, _, appendErr := h.appendConversationAndListMessages(ctx, sessionInfo, sessionID, role, content, req.Metadata)
+	sessionRecord, messages, _, appendErr := h.appendConversationAndListMessages(ctx, sessionInfo, sessionID, providerHint, role, content, req.Metadata)
 	if appendErr != nil {
 		props := pages.ChatTranscriptProps{ConversationID: sessionID.String(), ErrorMessage: "Failed to send message."}
 		if errors.Is(appendErr, sql.ErrNoRows) {
 			props.ErrorMessage = "Conversation not found. Start a new conversation."
 		}
 		providerID := sessionRecord.ProviderID
+		if providerID == "" {
+			providerID = providerHint
+		}
 		if blocked := h.chatCredentialReason(ctx, sessionInfo, providerID); blocked != "" {
 			props.BlockedReason = blocked
 		}
+		props.ProviderID = providerID
 		h.writeChatTranscript(w, r.Context(), props)
 		return
 	}
@@ -338,6 +348,7 @@ func (h *AI) ChatAppendMessage(w http.ResponseWriter, r *http.Request) {
 	props := pages.ChatTranscriptProps{
 		ConversationID: sessionRecord.ID.String(),
 		Messages:       chatMessagesToView(messages),
+		ProviderID:     sessionRecord.ProviderID,
 	}
 	h.writeChatTranscript(w, r.Context(), props)
 }
@@ -1182,6 +1193,7 @@ func (h *AI) AppendConversationMessage(w http.ResponseWriter, r *http.Request) {
 		RespondWithError(w, http.StatusBadRequest, "invalid payload", err)
 		return
 	}
+	providerHint := strings.TrimSpace(req.Provider)
 	if req.Content == "" {
 		RespondWithError(w, http.StatusBadRequest, "content is required", errors.New("missing content"))
 		return
@@ -1195,7 +1207,7 @@ func (h *AI) AppendConversationMessage(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
 	defer cancel()
 
-	_, _, reply, err := h.appendConversationAndListMessages(ctx, sessionInfo, sessionID, role, req.Content, req.Metadata)
+	_, _, reply, err := h.appendConversationAndListMessages(ctx, sessionInfo, sessionID, providerHint, role, req.Content, req.Metadata)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			RespondWithError(w, http.StatusNotFound, "conversation not found", err)
@@ -1687,8 +1699,12 @@ func (h *AI) BuildChatProps(ctx context.Context, session auth.Session, providerC
 		return props, errors.New("conversation service not configured")
 	}
 
-	var sessionRecord conversation.Session
-	var messages []conversation.Message
+	var (
+		sessionRecord conversation.Session
+		messages      []conversation.Message
+		hasSession    bool
+		err           error
+	)
 
 	if conversationCandidate != "" {
 		conversationID, err := uuid.Parse(conversationCandidate)
@@ -1714,6 +1730,7 @@ func (h *AI) BuildChatProps(ctx context.Context, session auth.Session, providerC
 				}
 			} else {
 				activeID = sessionRecord.ProviderID
+				hasSession = true
 				if entry, ok := providerLookup[activeID]; ok {
 					activeEntry = entry
 				} else {
@@ -1726,34 +1743,27 @@ func (h *AI) BuildChatProps(ctx context.Context, session auth.Session, providerC
 		}
 	}
 
-	if sessionRecord.ID == uuid.Nil {
+	var conversationID uuid.UUID
+	if !hasSession {
 		if !ensureSession {
 			return props, sql.ErrNoRows
 		}
 
-		ctxCreate, cancel := context.WithTimeout(ctx, 10*time.Second)
-		newSession, err := h.Conversations.StartSession(ctxCreate, conversation.CreateSessionParams{
-			CompanyID:  session.CompanyID,
-			UserID:     session.UserID,
-			ProviderID: activeID,
-			Title:      fmt.Sprintf("%s conversation", activeEntry.Label),
-		})
+		conversationID = uuid.New()
+		props.ConversationID = conversationID.String()
+	} else {
+		conversationID = sessionRecord.ID
+
+		ctxMsgs, cancel := context.WithTimeout(ctx, 10*time.Second)
+		messages, err = h.Conversations.ListSessionMessages(ctxMsgs, sessionRecord.ID)
 		cancel()
 		if err != nil {
 			return props, err
 		}
-		sessionRecord = newSession
-	}
 
-	ctxMsgs, cancel := context.WithTimeout(ctx, 10*time.Second)
-	messages, err := h.Conversations.ListSessionMessages(ctxMsgs, sessionRecord.ID)
-	cancel()
-	if err != nil {
-		return props, err
+		props.ConversationID = sessionRecord.ID.String()
+		props.Messages = chatMessagesToView(messages)
 	}
-
-	props.ConversationID = sessionRecord.ID.String()
-	props.Messages = chatMessagesToView(messages)
 
 	ctxList, cancel := context.WithTimeout(ctx, 10*time.Second)
 	sessions, err := h.Conversations.ListCompanySessions(ctxList, session.CompanyID, defaultConversationLimit, 0)
@@ -1762,7 +1772,12 @@ func (h *AI) BuildChatProps(ctx context.Context, session auth.Session, providerC
 		return props, err
 	}
 
-	props.Conversations = chatSessionsToView(sessions, providerLookup, sessionRecord.ID)
+	var activeConversation uuid.UUID
+	if hasSession {
+		activeConversation = sessionRecord.ID
+	}
+
+	props.Conversations = chatSessionsToView(sessions, providerLookup, activeConversation)
 	props.ConversationsNextOffset = len(sessions)
 	if len(sessions) == int(defaultConversationLimit) {
 		props.ConversationsHasMore = true
@@ -1887,11 +1902,23 @@ func truncateText(value string, limit int) string {
 	return string(runes[:limit]) + "..."
 }
 
-func (h *AI) appendConversationAndListMessages(ctx context.Context, session auth.Session, sessionID uuid.UUID, role, content string, metadata map[string]any) (conversation.Session, []conversation.Message, conversation.Message, error) {
+func (h *AI) appendConversationAndListMessages(ctx context.Context, session auth.Session, sessionID uuid.UUID, providerCandidate, role, content string, metadata map[string]any) (conversation.Session, []conversation.Message, conversation.Message, error) {
+	providerID := strings.TrimSpace(providerCandidate)
+	if providerID == "" {
+		providerID = h.DefaultProvider
+	}
+
 	sessionRecord, err := h.Conversations.Session(ctx, session.CompanyID, sessionID)
 	if err != nil {
-		return conversation.Session{}, nil, conversation.Message{}, err
+		if !errors.Is(err, sql.ErrNoRows) {
+			return conversation.Session{}, nil, conversation.Message{}, err
+		}
+		sessionRecord, err = h.createChatSession(ctx, session, sessionID, providerID)
+		if err != nil {
+			return conversation.Session{}, nil, conversation.Message{}, err
+		}
 	}
+	providerID = sessionRecord.ProviderID
 
 	msg, err := h.Conversations.AppendMessage(ctx, conversation.CreateMessageParams{
 		SessionID: sessionID,
@@ -1948,6 +1975,32 @@ func (h *AI) appendConversationAndListMessages(ctx context.Context, session auth
 	}
 
 	return sessionRecord, updated, reply, nil
+}
+
+func (h *AI) createChatSession(ctx context.Context, session auth.Session, sessionID uuid.UUID, providerID string) (conversation.Session, error) {
+	if sessionID == uuid.Nil {
+		return conversation.Session{}, errors.New("conversation id required")
+	}
+
+	entries := h.catalogEntries(ctx)
+	providerLabel := providerID
+	for _, entry := range entries {
+		if entry.ID == providerID {
+			providerLabel = entry.Label
+			break
+		}
+	}
+
+	ctxCreate, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	return h.Conversations.StartSession(ctxCreate, conversation.CreateSessionParams{
+		ID:         sessionID,
+		CompanyID:  session.CompanyID,
+		UserID:     session.UserID,
+		ProviderID: providerID,
+		Title:      fmt.Sprintf("%s conversation", providerLabel),
+	})
 }
 
 func (h *AI) writeChatShell(w http.ResponseWriter, ctx context.Context, props pages.ChatPageProps) {

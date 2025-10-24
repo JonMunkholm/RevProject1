@@ -58,6 +58,7 @@ type ChatTranscriptProps struct {
     Messages       []ChatMessageView
     BlockedReason  string
     ErrorMessage   string
+    ProviderID     string
 }
 
 templ ChatPage(props ChatPageProps) {
@@ -131,6 +132,7 @@ templ ChatShell(props ChatPageProps) {
                     Messages: props.Messages,
                     BlockedReason: props.BlockedReason,
                     ErrorMessage: props.ErrorMessage,
+                    ProviderID: props.ActiveProviderID,
                 })
             </div>
         </section>
@@ -245,9 +247,10 @@ templ ChatTranscript(props ChatTranscriptProps) {
                 hx-swap="outerHTML"
                 hx-encoding="json"
                 hx-on::after-request="this.reset()"
-                hx-trigger="submit from:#chat-input"
+                hx-trigger="submit"
                 hx-on::init="this.addEventListener('keydown', (event) => { if (event.key === 'Enter' && !event.shiftKey && event.target.id === 'chat-input') { event.preventDefault(); htmx.trigger(this, 'submit'); } });"
             >
+                <input type="hidden" name="provider" value={props.ProviderID} />
                 <label class="chat-composer__label" for="chat-input">Message</label>
                 <textarea
                     id="chat-input"

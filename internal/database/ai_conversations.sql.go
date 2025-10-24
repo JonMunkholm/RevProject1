@@ -14,36 +14,40 @@ import (
 
 const createAIConversationSession = `-- name: CreateAIConversationSession :one
 INSERT INTO ai_conversation_sessions (
+    id,
     company_id,
     user_id,
     provider_id,
     title,
     metadata
 ) VALUES (
-    $1,
+    COALESCE($1, gen_random_uuid()),
     $2,
     $3,
     $4,
-    COALESCE($5, '{}'::jsonb)
+    $5,
+    COALESCE($6, '{}'::jsonb)
 )
 RETURNING id, company_id, user_id, provider_id, title, metadata, created_at, updated_at
 `
 
 type CreateAIConversationSessionParams struct {
+	ID         interface{}
 	CompanyID  uuid.UUID
 	UserID     uuid.UUID
 	ProviderID string
 	Title      sql.NullString
-	Column5    interface{}
+	Metadata   interface{}
 }
 
 func (q *Queries) CreateAIConversationSession(ctx context.Context, arg CreateAIConversationSessionParams) (AiConversationSession, error) {
 	row := q.db.QueryRowContext(ctx, createAIConversationSession,
+		arg.ID,
 		arg.CompanyID,
 		arg.UserID,
 		arg.ProviderID,
 		arg.Title,
-		arg.Column5,
+		arg.Metadata,
 	)
 	var i AiConversationSession
 	err := row.Scan(

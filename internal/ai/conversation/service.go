@@ -45,6 +45,7 @@ type Message struct {
 }
 
 type CreateSessionParams struct {
+	ID         uuid.UUID
 	CompanyID  uuid.UUID
 	UserID     uuid.UUID
 	ProviderID string
