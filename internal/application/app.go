@@ -117,6 +117,7 @@ func (a *App) initAI() {
 		Logger:          clientLogger,
 		Credentials:     a.aiResolver,
 		Tools: []ai.Tool{
+			aitool.ListCustomersTool{Store: a.db},
 			aitool.FetchCustomerTool{Store: a.db},
 			aitool.CreateTicketTool{},
 		},

@@ -215,25 +215,27 @@ templ ChatTranscript(props ChatTranscriptProps) {
                 {props.ErrorMessage}
             </div>
         }
-        if len(props.Messages) == 0 {
-            <div class="chat-transcript__empty">
-                <p>Start the conversation by sending a message.</p>
-            </div>
-        } else {
-            <ol class="chat-transcript__list">
-                for _, msg := range props.Messages {
-                    <li class={chatMessageClasses(msg.Role)}>
-                        <div class="chat-message__meta">
-                            <span class="chat-message__role">{displayRole(msg.Role)}</span>
-                            <span class="chat-message__time">{msg.CreatedAt.Format("15:04")}</span>
-                        </div>
-                        <div class="chat-message__content">
-                            <p>{msg.Content}</p>
-                        </div>
-                    </li>
-                }
-            </ol>
-        }
+        <div class="chat-transcript__body">
+            if len(props.Messages) == 0 {
+                <div class="chat-transcript__empty">
+                    <p>Start the conversation by sending a message.</p>
+                </div>
+            } else {
+                <ol class="chat-transcript__list">
+                    for _, msg := range props.Messages {
+                        <li class={chatMessageClasses(msg.Role)}>
+                            <div class="chat-message__meta">
+                                <span class="chat-message__role">{displayRole(msg.Role)}</span>
+                                <span class="chat-message__time">{msg.CreatedAt.Format("15:04")}</span>
+                            </div>
+                            <div class="chat-message__content">
+                                <p>{msg.Content}</p>
+                            </div>
+                        </li>
+                    }
+                </ol>
+            }
+        </div>
 
         if props.BlockedReason != "" {
             <div class="chat-transcript__notice" role="alert">

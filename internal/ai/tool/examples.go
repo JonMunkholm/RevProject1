@@ -3,9 +3,12 @@ package tool
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
+	"math"
+	"sort"
 	"strings"
 	"time"
 
@@ -17,13 +20,120 @@ import (
 
 // WorkspaceTools groups multiple tool definitions for convenience.
 type WorkspaceTools struct {
+	ListCustomers  ListCustomersTool
 	CustomerLookup FetchCustomerTool
 	TicketCreation CreateTicketTool
 }
 
 // CustomerStore exposes customer lookups needed by FetchCustomerTool.
 type CustomerStore interface {
+	GetAllCustomersCompany(ctx context.Context, companyID uuid.UUID) ([]database.Customer, error)
 	GetCustomer(ctx context.Context, params database.GetCustomerParams) (database.Customer, error)
+	GetCustomerByName(ctx context.Context, params database.GetCustomerByNameParams) (database.Customer, error)
+}
+
+// ListCustomersTool enumerates customer summaries for the active company.
+type ListCustomersTool struct {
+	Store CustomerStore
+}
+
+func (ListCustomersTool) Name() string { return "list_customers" }
+func (ListCustomersTool) Summary() string {
+	return "List customers for the current account with optional name filtering"
+}
+func (ListCustomersTool) InputSchema() map[string]any {
+	return map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"query": map[string]any{
+				"type":        "string",
+				"description": "Optional case-insensitive substring to match customer names",
+			},
+			"limit": map[string]any{
+				"type":        "integer",
+				"description": "Maximum number of customers to return (default 20, max 100)",
+				"minimum":     1,
+				"maximum":     100,
+			},
+		},
+	}
+}
+func (t ListCustomersTool) NewHandler() Handler {
+	return listCustomersHandler{store: t.Store}
+}
+
+type listCustomersHandler struct {
+	store CustomerStore
+}
+
+func (h listCustomersHandler) Invoke(ctx context.Context, input map[string]any) (Result, error) {
+	if h.store == nil {
+		return Result{}, errors.New("customer list unavailable")
+	}
+
+	session, ok := contextutil.Session(ctx)
+	if !ok || session.CompanyID == uuid.Nil {
+		return Result{}, errors.New("authentication context missing for customer list")
+	}
+
+	query := ""
+	if rawQuery, ok := input["query"].(string); ok {
+		query = strings.TrimSpace(rawQuery)
+	}
+
+	limit := 20
+	if rawLimit, ok := input["limit"]; ok {
+		switch typed := rawLimit.(type) {
+		case float64:
+			limit = int(math.Round(typed))
+		case json.Number:
+			if parsed, err := typed.Int64(); err == nil {
+				limit = int(parsed)
+			}
+		}
+	}
+	if limit <= 0 {
+		limit = 20
+	}
+	if limit > 100 {
+		limit = 100
+	}
+
+	ctxList, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	allCustomers, err := h.store.GetAllCustomersCompany(ctxList, session.CompanyID)
+	if err != nil {
+		return Result{}, fmt.Errorf("list customers failed: %w", err)
+	}
+
+	sort.Slice(allCustomers, func(i, j int) bool {
+		return strings.ToLower(allCustomers[i].CustomerName) < strings.ToLower(allCustomers[j].CustomerName)
+	})
+
+	needle := strings.ToLower(query)
+	summaries := make([]map[string]any, 0, limit)
+	for _, c := range allCustomers {
+		if needle != "" && !strings.Contains(strings.ToLower(c.CustomerName), needle) {
+			continue
+		}
+		status := "inactive"
+		if c.IsActive {
+			status = "active"
+		}
+		summaries = append(summaries, map[string]any{
+			"id":     c.ID.String(),
+			"name":   c.CustomerName,
+			"status": status,
+		})
+		if len(summaries) >= limit {
+			break
+		}
+	}
+
+	log.Printf("ai.tool.list_customers: company=%s user=%s count=%d query=%q", session.CompanyID, session.UserID, len(summaries), query)
+
+	return Result{Output: map[string]any{"customers": summaries}}, nil
 }
 
 // FetchCustomerTool retrieves customer details for the active company.
@@ -32,7 +142,7 @@ type FetchCustomerTool struct {
 }
 
 func (FetchCustomerTool) Name() string    { return "fetch_customer" }
-func (FetchCustomerTool) Summary() string { return "Retrieve customer profile details by ID" }
+func (FetchCustomerTool) Summary() string { return "Retrieve a customer by unique identifier or name" }
 func (FetchCustomerTool) InputSchema() map[string]any {
 	return map[string]any{
 		"type": "object",
@@ -41,8 +151,15 @@ func (FetchCustomerTool) InputSchema() map[string]any {
 				"type":        "string",
 				"description": "Unique identifier of the customer",
 			},
+			"name": map[string]any{
+				"type":        "string",
+				"description": "Case-insensitive customer name match",
+			},
 		},
-		"required": []string{"customer_id"},
+		"anyOf": []any{
+			map[string]any{"required": []string{"customer_id"}},
+			map[string]any{"required": []string{"name"}},
+		},
 	}
 }
 func (t FetchCustomerTool) NewHandler() Handler {
@@ -60,16 +177,6 @@ func (h fetchCustomerHandler) Invoke(ctx context.Context, input map[string]any) 
 		return Result{}, errors.New("customer lookup unavailable")
 	}
 
-	rawID, ok := input["customer_id"]
-	if !ok {
-		return Result{}, errors.New("customer_id is required")
-	}
-
-	customerID, err := parseUUIDString(rawID)
-	if err != nil {
-		return Result{}, err
-	}
-
 	session, ok := contextutil.Session(ctx)
 	if !ok || session.CompanyID == uuid.Nil {
 		return Result{}, errors.New("authentication context missing for customer lookup")
@@ -78,13 +185,36 @@ func (h fetchCustomerHandler) Invoke(ctx context.Context, input map[string]any) 
 	ctxLookup, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
 
-	record, err := h.store.GetCustomer(ctxLookup, database.GetCustomerParams{
-		ID:        customerID,
-		CompanyID: session.CompanyID,
-	})
+	var (
+		record database.Customer
+		err    error
+	)
+
+	if rawID, ok := input["customer_id"]; ok {
+		customerID, parseErr := parseUUIDString(rawID)
+		if parseErr != nil {
+			return Result{}, parseErr
+		}
+		record, err = h.store.GetCustomer(ctxLookup, database.GetCustomerParams{
+			ID:        customerID,
+			CompanyID: session.CompanyID,
+		})
+	} else if rawName, ok := input["name"]; ok {
+		name := strings.TrimSpace(fmt.Sprintf("%v", rawName))
+		if name == "" {
+			return Result{}, errors.New("name cannot be empty")
+		}
+		record, err = h.store.GetCustomerByName(ctxLookup, database.GetCustomerByNameParams{
+			CompanyID:    session.CompanyID,
+			CustomerName: name,
+		})
+	} else {
+		return Result{}, errors.New("provide customer_id or name")
+	}
+
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return Result{}, fmt.Errorf("customer %s not found", customerID)
+			return Result{}, errors.New("customer not found")
 		}
 		return Result{}, fmt.Errorf("lookup failed: %w", err)
 	}
@@ -109,8 +239,21 @@ func (h fetchCustomerHandler) Invoke(ctx context.Context, input map[string]any) 
 }
 
 func parseUUIDString(value any) (uuid.UUID, error) {
-	str, _ := value.(string)
-	str = strings.TrimSpace(str)
+	switch v := value.(type) {
+	case string:
+		return parseUUIDFromString(v)
+	case json.Number:
+		return parseUUIDFromString(v.String())
+	default:
+		if s, ok := value.(fmt.Stringer); ok {
+			return parseUUIDFromString(s.String())
+		}
+	}
+	return uuid.Nil, errors.New("customer_id is required")
+}
+
+func parseUUIDFromString(raw string) (uuid.UUID, error) {
+	str := strings.TrimSpace(raw)
 	if str == "" {
 		return uuid.Nil, errors.New("customer_id is required")
 	}
