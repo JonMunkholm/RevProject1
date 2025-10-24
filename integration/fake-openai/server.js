@@ -14,8 +14,12 @@ const server = http.createServer(async (req, res) => {
       try {
         const parsed = JSON.parse(body || '{}');
         const input = parsed.input || '';
-        const dim = 8;
-        const vector = Array(dim).fill(0).map((_, idx) => (idx + (input.length % (idx + 1))) / dim);
+        const dim = 3072;
+        const seed = input.length || 1;
+        const vector = Array(dim).fill(0).map((_, idx) => {
+          const value = ((seed * (idx + 1)) % 1000) / 1000;
+          return value;
+        });
         const response = {
           model: parsed.model || 'fake-embedding-model',
           data: [

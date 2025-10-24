@@ -111,6 +111,50 @@ type AiUserPreference struct {
 	UpdatedAt  time.Time
 }
 
+type AscEmbedding struct {
+	ID             uuid.UUID
+	ParagraphID    uuid.UUID
+	Embedding      interface{}
+	EmbeddingModel string
+	EmbeddingDate  time.Time
+	IndexRole      sql.NullString
+	SchemaVersion  string
+	CreatedBy      sql.NullString
+	CreatedAt      sql.NullTime
+}
+
+type AscParagraph struct {
+	ID                   uuid.UUID
+	Framework            string
+	Topic                string
+	AscReference         string
+	GuidanceVersion      string
+	IssuedDate           sql.NullTime
+	EffectiveDate        sql.NullTime
+	EarlyAdoptionAllowed sql.NullBool
+	Supersedes           sql.NullString
+	SupersededBy         sql.NullString
+	Superseded           sql.NullBool
+	AmendsTopics         []string
+	RelatedParagraphs    []string
+	CrossRefs            []string
+	StepModelRef         sql.NullString
+	SourceType           sql.NullString
+	AuthorityScore       sql.NullString
+	SourceID             sql.NullString
+	Checksum             sql.NullString
+	LicenseID            sql.NullString
+	DataSensitivity      sql.NullString
+	VisibilityScope      []string
+	TenantID             sql.NullString
+	PolicyID             sql.NullString
+	SchemaVersion        string
+	Content              string
+	CreatedAt            sql.NullTime
+	UpdatedAt            sql.NullTime
+	EmbeddingStatus      string
+}
+
 type Bundle struct {
 	ID         uuid.UUID
 	BundleName string
@@ -166,6 +210,32 @@ type Customer struct {
 	UpdatedAt    time.Time
 	IsActive     bool
 	CompanyID    uuid.UUID
+}
+
+type EmbeddingJob struct {
+	ID              uuid.UUID
+	ParagraphID     uuid.UUID
+	Status          string
+	Attempts        int32
+	LastError       sql.NullString
+	SourceHash      string
+	Model           string
+	Priority        string
+	MetadataVersion string
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
+	CompletedAt     sql.NullTime
+}
+
+type GuidanceAudit struct {
+	ID          uuid.UUID
+	ParagraphID uuid.UUID
+	ChangeType  string
+	Actor       string
+	BeforeState pqtype.NullRawMessage
+	AfterState  pqtype.NullRawMessage
+	Reason      sql.NullString
+	CreatedAt   time.Time
 }
 
 type PerformanceObligation struct {

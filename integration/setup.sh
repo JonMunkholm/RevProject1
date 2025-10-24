@@ -12,7 +12,7 @@ compose_cmd() {
 SCRIPT_DIR="$(dirname "$0")"
 pushd "$SCRIPT_DIR" >/dev/null
 
-compose_cmd up -d --wait
+compose_cmd up -d --force-recreate --wait
 
 : "${AWS_TEST_REGION:=us-west-1}"
 QUEUE_ENDPOINT="http://localhost:4566"

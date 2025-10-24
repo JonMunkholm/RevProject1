@@ -13,9 +13,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
+	"math/rand"
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -56,6 +59,11 @@ type Service struct {
 	model             string
 	projectID         string
 	guardrailsEnabled bool
+	compareEnabled    bool
+	compareSampleRate float64
+	compareMaxResults int
+	sampleRand        *rand.Rand
+	sampleMu          sync.Mutex
 }
 
 // Config configures a retrieval Service.
@@ -67,6 +75,9 @@ type Config struct {
 	Model             string
 	ProjectID         string
 	GuardrailsEnabled bool
+	CompareEnabled    bool
+	CompareSampleRate float64
+	CompareMaxResults int
 }
 
 // NewService builds a Service backed by the supplied components.
@@ -89,6 +100,14 @@ func NewService(cfg Config) (*Service, error) {
 	if model == "" {
 		model = "text-embedding-3-large"
 	}
+	maxResults := cfg.CompareMaxResults
+	if maxResults <= 0 {
+		maxResults = 5
+	}
+	var sampler *rand.Rand
+	if cfg.CompareEnabled && cfg.CompareSampleRate > 0 {
+		sampler = rand.New(rand.NewSource(time.Now().UnixNano()))
+	}
 	return &Service{
 		db:                cfg.DB,
 		http:              client,
@@ -97,6 +116,10 @@ func NewService(cfg Config) (*Service, error) {
 		model:             model,
 		projectID:         cfg.ProjectID,
 		guardrailsEnabled: cfg.GuardrailsEnabled,
+		compareEnabled:    cfg.CompareEnabled,
+		compareSampleRate: cfg.CompareSampleRate,
+		compareMaxResults: maxResults,
+		sampleRand:        sampler,
 	}, nil
 }
 
@@ -205,6 +228,12 @@ func (s *Service) Search(ctx context.Context, params QueryParams) (results []Res
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
+
+	if s.shouldSampleComparison() && s.guardrailsEnabled {
+		guardrailCopy := append([]Result(nil), results...)
+		go s.compareAndLog(context.Background(), params, vectorLiteral, limit, guardrailCopy)
+	}
+
 	return results, nil
 }
 
@@ -364,6 +393,189 @@ func (s *Service) buildGuardrailSQL(vectorLiteral string, limit int, params Quer
 	builder.WriteString(guardrailOrderClause)
 
 	return builder.String(), args, nil
+}
+
+func (s *Service) runLegacyQuery(ctx context.Context, vectorLiteral string, limit int) ([]Result, error) {
+	rows, err := s.db.QueryContext(ctx, searchLegacySQL, vectorLiteral, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanRows(rows, limit)
+}
+
+func scanRows(rows *sql.Rows, limit int) ([]Result, error) {
+	results := make([]Result, 0, limit)
+	for rows.Next() {
+		var r Result
+		if err := rows.Scan(
+			&r.ParagraphID,
+			&r.ASCReference,
+			&r.Content,
+			&r.Score,
+			&r.Guidance,
+			&r.SourceType,
+			&r.Authority,
+			&r.SchemaVersion,
+		); err != nil {
+			return nil, err
+		}
+		results = append(results, r)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return results, nil
+}
+
+func (s *Service) shouldSampleComparison() bool {
+	if !s.compareEnabled || s.compareSampleRate <= 0 {
+		return false
+	}
+	if s.compareSampleRate >= 1 {
+		return true
+	}
+	if s.sampleRand == nil {
+		return false
+	}
+	s.sampleMu.Lock()
+	defer s.sampleMu.Unlock()
+	return s.sampleRand.Float64() < s.compareSampleRate
+}
+
+func (s *Service) compareAndLog(ctx context.Context, params QueryParams, vectorLiteral string, limit int, guardrailResults []Result) {
+	legacyResults, err := s.runLegacyQuery(ctx, vectorLiteral, limit)
+	entry := comparisonEntry{
+		Event:     "guardrail_comparison",
+		SampleID:  uuid.New().String(),
+		Timestamp: time.Now().UTC(),
+		Query: comparisonQuery{
+			Text:  params.Query,
+			Limit: limit,
+			Flags: comparisonFlags{
+				IncludeSuperseded:   params.IncludeSuperseded,
+				IncludeInterpretive: params.IncludeInterpretive,
+				IncludeInternal:     params.IncludeInternal,
+				HasTenantContext:    params.TenantID != uuid.Nil,
+				HasAsOf:             params.AsOf != nil,
+			},
+		},
+	}
+	if err != nil {
+		entry.Error = err.Error()
+	} else {
+		entry.GuardrailResults = summariseResults(guardrailResults, s.compareMaxResults)
+		entry.LegacyResults = summariseResults(legacyResults, s.compareMaxResults)
+		entry.Diff = diffResults(guardrailResults, legacyResults)
+	}
+	payload, marshalErr := json.Marshal(entry)
+	if marshalErr != nil {
+		log.Printf(`{"event":"guardrail_comparison","error":"marshal_failed","detail":%q}`, marshalErr.Error())
+		return
+	}
+	log.Printf("%s", payload)
+}
+
+type comparisonEntry struct {
+	Event            string          `json:"event"`
+	SampleID         string          `json:"sample_id"`
+	Timestamp        time.Time       `json:"timestamp"`
+	Query            comparisonQuery `json:"query"`
+	GuardrailResults []resultSummary `json:"guardrail_results,omitempty"`
+	LegacyResults    []resultSummary `json:"legacy_results,omitempty"`
+	Diff             comparisonDiff  `json:"diff,omitempty"`
+	Error            string          `json:"error,omitempty"`
+}
+
+type comparisonQuery struct {
+	Text  string          `json:"text"`
+	Limit int             `json:"limit"`
+	Flags comparisonFlags `json:"flags"`
+}
+
+type comparisonFlags struct {
+	IncludeSuperseded   bool `json:"include_superseded"`
+	IncludeInterpretive bool `json:"include_interpretive"`
+	IncludeInternal     bool `json:"include_internal"`
+	HasTenantContext    bool `json:"has_tenant_context"`
+	HasAsOf             bool `json:"has_as_of"`
+}
+
+type comparisonDiff struct {
+	GuardrailOnly []uuid.UUID        `json:"guardrail_only,omitempty"`
+	LegacyOnly    []uuid.UUID        `json:"legacy_only,omitempty"`
+	RankChanges   []comparisonChange `json:"rank_changes,omitempty"`
+}
+
+type comparisonChange struct {
+	ParagraphID uuid.UUID `json:"paragraph_id"`
+	Guardrail   int       `json:"guardrail_rank"`
+	Legacy      int       `json:"legacy_rank"`
+}
+
+type resultSummary struct {
+	ParagraphID   uuid.UUID `json:"paragraph_id"`
+	Reference     string    `json:"reference"`
+	Score         float64   `json:"score"`
+	SourceType    string    `json:"source_type"`
+	Authority     float64   `json:"authority"`
+	SchemaVersion string    `json:"schema_version"`
+}
+
+func summariseResults(results []Result, max int) []resultSummary {
+	if len(results) == 0 {
+		return nil
+	}
+	if len(results) > max {
+		results = results[:max]
+	}
+	summary := make([]resultSummary, 0, len(results))
+	for _, r := range results {
+		summary = append(summary, resultSummary{
+			ParagraphID:   r.ParagraphID,
+			Reference:     r.ASCReference,
+			Score:         r.Score,
+			SourceType:    r.SourceType,
+			Authority:     r.Authority,
+			SchemaVersion: r.SchemaVersion,
+		})
+	}
+	return summary
+}
+
+func diffResults(guardrail, legacy []Result) comparisonDiff {
+	diff := comparisonDiff{}
+	guardrailIndex := make(map[uuid.UUID]int, len(guardrail))
+	legacyIndex := make(map[uuid.UUID]int, len(legacy))
+
+	for idx, r := range guardrail {
+		guardrailIndex[r.ParagraphID] = idx
+	}
+	for idx, r := range legacy {
+		legacyIndex[r.ParagraphID] = idx
+	}
+
+	for id, idx := range guardrailIndex {
+		if legacyIdx, ok := legacyIndex[id]; ok {
+			if idx != legacyIdx {
+				diff.RankChanges = append(diff.RankChanges, comparisonChange{
+					ParagraphID: id,
+					Guardrail:   idx,
+					Legacy:      legacyIdx,
+				})
+			}
+		} else {
+			diff.GuardrailOnly = append(diff.GuardrailOnly, id)
+		}
+	}
+
+	for id := range legacyIndex {
+		if _, ok := guardrailIndex[id]; !ok {
+			diff.LegacyOnly = append(diff.LegacyOnly, id)
+		}
+	}
+
+	return diff
 }
 
 const searchLegacySQL = `

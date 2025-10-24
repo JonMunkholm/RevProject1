@@ -56,6 +56,9 @@ func run() error {
 		port = ":8080"
 	}
 	guardrailsEnabled := parseBoolEnv("GUARDRAILS_ENABLED", false)
+	compareEnabled := parseBoolEnv("GUARDRAILS_COMPARE_ENABLED", false)
+	compareSampleRate := parseFloatEnv("GUARDRAILS_COMPARE_SAMPLE_RATE", 0)
+	compareMaxResults := parseIntEnv("GUARDRAILS_COMPARE_MAX_RESULTS", 5)
 
 	db, err := sql.Open("postgres", dbURL)
 	if err != nil {
@@ -82,6 +85,9 @@ func run() error {
 		OpenAIURL:         openAIBase,
 		ProjectID:         openAIProject,
 		GuardrailsEnabled: guardrailsEnabled,
+		CompareEnabled:    compareEnabled,
+		CompareSampleRate: compareSampleRate,
+		CompareMaxResults: compareMaxResults,
 	})
 	if err != nil {
 		return fmt.Errorf("init retrieval: %w", err)
@@ -303,6 +309,30 @@ func parseBoolEnv(key string, def bool) bool {
 		return def
 	}
 	value, err := strconv.ParseBool(raw)
+	if err != nil {
+		return def
+	}
+	return value
+}
+
+func parseFloatEnv(key string, def float64) float64 {
+	raw := strings.TrimSpace(os.Getenv(key))
+	if raw == "" {
+		return def
+	}
+	value, err := strconv.ParseFloat(raw, 64)
+	if err != nil {
+		return def
+	}
+	return value
+}
+
+func parseIntEnv(key string, def int) int {
+	raw := strings.TrimSpace(os.Getenv(key))
+	if raw == "" {
+		return def
+	}
+	value, err := strconv.Atoi(raw)
 	if err != nil {
 		return def
 	}
