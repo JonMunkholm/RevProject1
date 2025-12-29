@@ -31,7 +31,16 @@ func LoginPage() templ.Component {
 			templ_7745c5c3_Var1 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = layout.LayoutWithAssets("Sign In • RevProject", []string{"/assets/css/auth.css", "/assets/css/login.css"}, LoginContent()).Render(ctx, templ_7745c5c3_Buffer)
+		templ_7745c5c3_Err = layout.LayoutWithAssets(
+			"Sign In",
+			[]string{
+				"/assets/css/tokens.css",
+				"/assets/css/base.css",
+				"/assets/css/components.css",
+				"/assets/css/pages/auth.css",
+			},
+			LoginContent(),
+		).Render(ctx, templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -60,7 +69,7 @@ func LoginContent() templ.Component {
 			templ_7745c5c3_Var2 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<main class=\"auth-page\" role=\"main\"><section class=\"auth-card\" id=\"auth-card\"><header class=\"auth-header\"><h1>Sign in</h1><p>New to RevProject? <a href=\"/register\">Create an account</a></p></header><div id=\"login-message\" class=\"auth-feedback\" aria-live=\"polite\" role=\"status\"></div><form class=\"auth-form\" hx-post=\"/auth/login\" hx-target=\"#login-message\" hx-swap=\"innerHTML\" hx-indicator=\"#login-indicator\" hx-vals=\"js:{ timezoneOffset: new Date().getTimezoneOffset() }\" novalidate><div class=\"form-field\"><label for=\"login-email\">Email address</label> <input id=\"login-email\" type=\"email\" name=\"email\" autocomplete=\"email\" required placeholder=\"name@company.com\"></div><div class=\"form-field\"><label for=\"login-password\">Password</label> <input id=\"login-password\" type=\"password\" name=\"password\" autocomplete=\"current-password\" required minlength=\"8\" placeholder=\"Enter your password\"></div><button type=\"submit\" class=\"primary-button\">Sign in</button><div id=\"login-indicator\" class=\"auth-indicator\" aria-live=\"polite\" aria-hidden=\"true\"><span class=\"spinner\" aria-hidden=\"true\"></span> <span>Checking credentials…</span></div></form><div class=\"auth-separator\" role=\"presentation\"><span>Or with</span></div><button type=\"button\" class=\"sso-button\" name=\"sso\" value=\"true\">Continue with Single Sign-On</button><div class=\"auth-links\"><a href=\"/forgot-password\">Forgot password?</a> <span aria-hidden=\"true\">·</span> <a href=\"/support\">Support</a> <span aria-hidden=\"true\">·</span> <a href=\"/legal/privacy\">Privacy</a></div></section></main>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<main class=\"auth-page\"><section class=\"auth-card\"><a href=\"/\" class=\"auth-brand\"><span class=\"auth-brand__icon\">RP</span> <span class=\"auth-brand__text\">RevProject</span></a><header class=\"auth-header\"><h1 class=\"auth-header__title\">Sign in</h1><p class=\"auth-header__subtitle\">New to RevProject? <a href=\"/register\" class=\"auth-header__link\">Create an account</a></p></header><div id=\"login-message\" class=\"auth-feedback\" aria-live=\"polite\" role=\"status\"></div><form class=\"auth-form\" hx-post=\"/auth/login\" hx-target=\"#login-message\" hx-swap=\"innerHTML\" hx-indicator=\"#login-indicator\" hx-vals=\"js:{ timezoneOffset: new Date().getTimezoneOffset() }\" novalidate><div class=\"auth-field\"><label class=\"auth-field__label\" for=\"login-email\">Email address</label> <input class=\"auth-field__input\" id=\"login-email\" type=\"email\" name=\"email\" autocomplete=\"email\" required placeholder=\"name@company.com\"></div><div class=\"auth-field\"><label class=\"auth-field__label\" for=\"login-password\">Password</label> <input class=\"auth-field__input\" id=\"login-password\" type=\"password\" name=\"password\" autocomplete=\"current-password\" required minlength=\"8\" placeholder=\"Enter your password\"></div><button type=\"submit\" class=\"auth-submit\">Sign in</button><div id=\"login-indicator\" class=\"auth-indicator htmx-indicator\" aria-live=\"polite\" aria-hidden=\"true\"><span class=\"auth-indicator__spinner\"></span> <span>Checking credentials...</span></div></form><div class=\"auth-divider\"><span>Or continue with</span></div><button type=\"button\" class=\"auth-sso\" name=\"sso\" value=\"true\">Continue with Single Sign-On</button><div class=\"auth-links\"><a href=\"/forgot-password\">Forgot password?</a> <span aria-hidden=\"true\">·</span> <a href=\"/support\">Support</a> <span aria-hidden=\"true\">·</span> <a href=\"/legal/privacy\">Privacy</a></div></section></main>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

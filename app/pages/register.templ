@@ -3,29 +3,40 @@ package pages
 import "github.com/JonMunkholm/RevProject1/app/layout"
 
 templ RegisterPage() {
-    @layout.LayoutWithAssets("Create workspace • RevProject", []string{"/assets/css/auth.css", "/assets/css/register.css"}, RegisterContent())
+    @layout.LayoutWithAssets(
+        "Create Workspace",
+        []string{
+            "/assets/css/tokens.css",
+            "/assets/css/base.css",
+            "/assets/css/components.css",
+            "/assets/css/pages/auth.css",
+        },
+        RegisterContent(),
+    )
 }
 
 templ RegisterContent() {
-    <main class="auth-shell">
-        <section class="auth-panel" id="auth-card">
-            <a class="brand-mark" href="/" aria-label="RevProject home">
-                <span class="brand-icon" aria-hidden="true"></span>
-                <span class="brand-text">RevProject</span>
+    <main class="auth-page">
+        <section class="auth-card">
+            <a href="/" class="auth-brand">
+                <span class="auth-brand__icon">RP</span>
+                <span class="auth-brand__text">RevProject</span>
             </a>
 
             <header class="auth-header">
-                <h1>Create your workspace</h1>
-                <p>Start fresh with a dedicated RevProject space for your team.</p>
+                <h1 class="auth-header__title">Create your workspace</h1>
+                <p class="auth-header__subtitle">Start fresh with a dedicated RevProject space for your team.</p>
             </header>
 
-            <button type="button" class="sso-button" name="sso" value="true">
+            <button type="button" class="auth-sso" name="sso" value="true">
                 Continue with Single Sign-On
             </button>
 
-            <div class="auth-divider" role="presentation"><span>or register with email</span></div>
+            <div class="auth-divider">
+                <span>or register with email</span>
+            </div>
 
-            <div id="register-message" class="form-feedback" aria-live="polite" role="status"></div>
+            <div id="register-message" class="auth-feedback" aria-live="polite" role="status"></div>
 
             <form
                 class="auth-form"
@@ -36,9 +47,10 @@ templ RegisterContent() {
                 hx-vals="js:{ timezoneOffset: new Date().getTimezoneOffset() }"
                 novalidate
             >
-                <div class="form-field">
-                    <label for="register-company">Company name</label>
+                <div class="auth-field">
+                    <label class="auth-field__label" for="register-company">Company name</label>
                     <input
+                        class="auth-field__input"
                         id="register-company"
                         type="text"
                         name="companyName"
@@ -48,9 +60,10 @@ templ RegisterContent() {
                     />
                 </div>
 
-                <div class="form-field">
-                    <label for="register-email">Work email</label>
+                <div class="auth-field">
+                    <label class="auth-field__label" for="register-email">Work email</label>
                     <input
+                        class="auth-field__input"
                         id="register-email"
                         type="email"
                         name="email"
@@ -60,9 +73,10 @@ templ RegisterContent() {
                     />
                 </div>
 
-                <div class="form-field">
-                    <label for="register-password">Password</label>
+                <div class="auth-field">
+                    <label class="auth-field__label" for="register-password">Password</label>
                     <input
+                        class="auth-field__input"
                         id="register-password"
                         type="password"
                         name="password"
@@ -73,9 +87,10 @@ templ RegisterContent() {
                     />
                 </div>
 
-                <div class="form-field">
-                    <label for="register-confirm">Confirm password</label>
+                <div class="auth-field">
+                    <label class="auth-field__label" for="register-confirm">Confirm password</label>
                     <input
+                        class="auth-field__input"
                         id="register-confirm"
                         type="password"
                         name="confirmPassword"
@@ -86,26 +101,26 @@ templ RegisterContent() {
                     />
                 </div>
 
-                <button type="submit" class="primary-button">Create workspace</button>
+                <button type="submit" class="auth-submit">Create workspace</button>
 
-                <div id="register-indicator" class="htmx-indicator" aria-live="polite" aria-hidden="true">
-                    <span class="spinner" aria-hidden="true"></span>
-                    <span>Setting up your workspace…</span>
+                <div id="register-indicator" class="auth-indicator" aria-live="polite" aria-hidden="true">
+                    <span class="auth-indicator__spinner"></span>
+                    <span>Setting up your workspace...</span>
                 </div>
             </form>
 
-            <div class="signup-line">
-                <span>Already have access?</span>
+            <p class="auth-signup-link">
+                Already have access?
                 <a href="/login">Sign in</a>
-            </div>
+            </p>
 
-            <footer class="support-links">
+            <div class="auth-links">
                 <a href="/support">Help</a>
                 <span aria-hidden="true">·</span>
                 <a href="/legal/privacy">Privacy</a>
                 <span aria-hidden="true">·</span>
                 <a href="/legal/terms">Terms</a>
-            </footer>
+            </div>
         </section>
     </main>
 }

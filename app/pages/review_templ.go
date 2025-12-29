@@ -8,7 +8,10 @@ package pages
 import "github.com/a-h/templ"
 import templruntime "github.com/a-h/templ/runtime"
 
-import "github.com/JonMunkholm/RevProject1/app/layout"
+import (
+	"github.com/JonMunkholm/RevProject1/app/components"
+	"github.com/JonMunkholm/RevProject1/app/layout"
+)
 
 func ReviewPage(active string) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
@@ -33,7 +36,13 @@ func ReviewPage(active string) templ.Component {
 		ctx = templ.ClearChildren(ctx)
 		templ_7745c5c3_Err = layout.LayoutWithAssets(
 			"Review Workspace",
-			[]string{"/assets/css/dashboard.css", "/assets/css/review.css"},
+			[]string{
+				"/assets/css/tokens.css",
+				"/assets/css/base.css",
+				"/assets/css/components.css",
+				"/assets/css/pages/app.css",
+				"/assets/css/pages/review.css",
+			},
 			ReviewShell(active),
 		).Render(ctx, templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
@@ -64,48 +73,25 @@ func ReviewShell(active string) templ.Component {
 			templ_7745c5c3_Var2 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<div class=\"dashboard-frame\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<div class=\"review-layout\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = DashboardSidebar(active).Render(ctx, templ_7745c5c3_Buffer)
+		templ_7745c5c3_Err = components.Sidebar(components.SidebarProps{
+			Brand:       "RevProject",
+			BrandTag:    "AI Platform",
+			NavItems:    components.DefaultNavItems(active),
+			LogoutURL:   "/auth/logout",
+			SettingsURL: "/app/settings",
+		}).Render(ctx, templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = ReviewMain().Render(ctx, templ_7745c5c3_Buffer)
+		templ_7745c5c3_Err = components.MobileMenuButton().Render(ctx, templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "</div>")
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		return nil
-	})
-}
-
-func ReviewMain() templ.Component {
-	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
-		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
-		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
-			return templ_7745c5c3_CtxErr
-		}
-		templ_7745c5c3_Buffer, templ_7745c5c3_IsBuffer := templruntime.GetBuffer(templ_7745c5c3_W)
-		if !templ_7745c5c3_IsBuffer {
-			defer func() {
-				templ_7745c5c3_BufErr := templruntime.ReleaseBuffer(templ_7745c5c3_Buffer)
-				if templ_7745c5c3_Err == nil {
-					templ_7745c5c3_Err = templ_7745c5c3_BufErr
-				}
-			}()
-		}
-		ctx = templ.InitializeContext(ctx)
-		templ_7745c5c3_Var3 := templ.GetChildren(ctx)
-		if templ_7745c5c3_Var3 == nil {
-			templ_7745c5c3_Var3 = templ.NopComponent
-		}
-		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "<main class=\"review-shell\"><header class=\"review-header\"><div class=\"review-header__intro\"><span class=\"review-kicker\">AI-assisted review</span><h1>Review workspace</h1><p>Combine uploaded documents with contextual prompts to generate compliance-ready summaries for your stakeholders.</p></div><div class=\"review-header__guide\"><h2>Tips for better reports</h2><ul><li><strong>Be specific.</strong> Reference the contract, customer, or metric you want to inspect.</li><li><strong>Upload supporting evidence.</strong> Attach spreadsheets, PDFs, or CSV exports for deeper context.</li><li><strong>Define outcomes.</strong> Ask for highlights, risks, or next-actions to tailor the summary.</li></ul></div></header><section class=\"review-grid\"><div class=\"review-column\"><section class=\"review-search\"><label for=\"review-customer\" class=\"input-label\">Customer</label><div class=\"review-search__control\"><input id=\"review-customer\" name=\"customer\" type=\"search\" placeholder=\"Search customer, contract, or ID\" hx-get=\"/api/review/customers\" hx-trigger=\"keyup changed delay:300ms\" hx-target=\"#review-customer-results\" hx-select=\".review-search-result\" autocomplete=\"off\"><div id=\"review-customer-results\" class=\"review-search__results\" role=\"listbox\"></div></div><p class=\"review-hint\">Start typing to filter the customer list. Select one to tailor the analysis.</p></section><section class=\"review-chat\"><form id=\"review-form\" class=\"review-chat__form\" method=\"post\" hx-post=\"/api/review/analyze\" hx-target=\"#review-report\" hx-indicator=\"#review-indicator\" hx-encoding=\"multipart/form-data\" hx-trigger=\"submit, keydown[key=='Enter' && !shiftKey] from:#review-prompt\"><label for=\"review-prompt\" class=\"input-label\">Prompt</label> <textarea id=\"review-prompt\" name=\"prompt\" rows=\"6\" required placeholder=\"Ask, for example: Summarize performance obligations and flag revenue recognition risks.\"></textarea><div class=\"review-chat__controls\"><label class=\"file-upload\"><input type=\"file\" name=\"attachment\"> <span>Attach supporting file</span></label> <button type=\"submit\">Generate report</button></div><p class=\"review-hint\">Press Enter to submit, Shift+Enter to add a new line.</p><div id=\"review-indicator\" class=\"htmx-indicator\">Compiling insights…</div></form></section><section class=\"review-feed\" id=\"review-feed\"><div class=\"review-placeholder\"><h2>Conversation history</h2><p>Your recent prompts and generated insights will appear here.</p></div></section></div><section class=\"review-report\" id=\"review-report\"><div class=\"review-placeholder\"><h2>Analysis report</h2><p>Run a prompt to generate a structured summary with key findings, open questions, and recommended actions.</p></div></section></section></main>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "<main class=\"review-main\" style=\"margin-left: var(--sidebar-width);\"><header class=\"review-header\"><div class=\"review-header__intro\"><span class=\"review-header__kicker\"><svg width=\"12\" height=\"12\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\"><path d=\"M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z\"></path> <polyline points=\"14 2 14 8 20 8\"></polyline> <line x1=\"16\" y1=\"13\" x2=\"8\" y2=\"13\"></line> <line x1=\"16\" y1=\"17\" x2=\"8\" y2=\"17\"></line></svg> AI-assisted review</span><h1 class=\"review-header__title\">Review Workspace</h1><p class=\"review-header__description\">Combine uploaded documents with contextual prompts to generate compliance-ready summaries for your stakeholders.</p></div><div class=\"review-tips\"><h2 class=\"review-tips__title\">Tips for better reports</h2><ul class=\"review-tips__list\"><li><strong>Be specific.</strong> Reference the contract, customer, or metric you want to inspect.</li><li><strong>Upload supporting evidence.</strong> Attach spreadsheets, PDFs, or CSV exports.</li><li><strong>Define outcomes.</strong> Ask for highlights, risks, or next-actions.</li></ul></div></header><div class=\"review-content\"><div class=\"review-input-column\"><!-- Customer Search --><div class=\"review-panel\"><h3 class=\"review-panel__title\">Customer</h3><div class=\"review-search\"><input id=\"review-customer\" name=\"customer\" type=\"search\" class=\"review-search__input\" placeholder=\"Search customer, contract, or ID...\" hx-get=\"/api/review/customers\" hx-trigger=\"keyup changed delay:300ms\" hx-target=\"#review-customer-results\" hx-select=\".review-search-result\" autocomplete=\"off\"><div id=\"review-customer-results\" class=\"review-search__results\" role=\"listbox\"></div></div><p class=\"review-hint\">Start typing to filter the customer list</p></div><!-- Prompt Form --><div class=\"review-panel\"><h3 class=\"review-panel__title\">Prompt</h3><form id=\"review-form\" class=\"review-form\" method=\"post\" hx-post=\"/api/review/analyze\" hx-target=\"#review-report-content\" hx-indicator=\"#review-indicator\" hx-encoding=\"multipart/form-data\" hx-trigger=\"submit, keydown[key=='Enter' && !shiftKey] from:#review-prompt\"><textarea id=\"review-prompt\" name=\"prompt\" class=\"review-form__textarea\" rows=\"5\" required placeholder=\"Summarize performance obligations and flag revenue recognition risks...\"></textarea><div class=\"review-form__controls\"><label class=\"review-file-upload\"><input type=\"file\" name=\"attachment\"> <svg class=\"review-file-upload__icon\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\"><path d=\"M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48\"></path></svg> <span>Attach file</span></label> <button type=\"submit\" class=\"review-submit\"><svg class=\"review-submit__icon\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\"><polygon points=\"13 2 3 14 12 14 11 22 21 10 12 10 13 2\"></polygon></svg> Generate report</button><div id=\"review-indicator\" class=\"review-indicator\"><span class=\"review-indicator__spinner\"></span> Analyzing...</div></div><p class=\"review-hint\">Press Enter to submit, Shift+Enter for new line</p></form></div><!-- Conversation Feed --><div class=\"review-panel review-feed\" id=\"review-feed\"><h3 class=\"review-panel__title\">History</h3><div class=\"review-feed__empty\"><svg class=\"review-feed__empty-icon\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\"><path d=\"M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z\"></path></svg><h4 class=\"review-feed__empty-title\">Conversation history</h4><p class=\"review-feed__empty-text\">Your prompts and insights will appear here</p></div></div></div><!-- Report Output --><div class=\"review-report\"><div class=\"review-report__content\" id=\"review-report-content\"><div class=\"review-report__empty\"><svg class=\"review-report__empty-icon\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\"><path d=\"M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z\"></path> <polyline points=\"14 2 14 8 20 8\"></polyline> <line x1=\"16\" y1=\"13\" x2=\"8\" y2=\"13\"></line> <line x1=\"16\" y1=\"17\" x2=\"8\" y2=\"17\"></line> <polyline points=\"10 9 9 9 8 9\"></polyline></svg><h3 class=\"review-report__empty-title\">Analysis Report</h3><p class=\"review-report__empty-text\">Run a prompt to generate a structured summary with key findings, open questions, and recommended actions.</p></div></div></div></div></main></div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

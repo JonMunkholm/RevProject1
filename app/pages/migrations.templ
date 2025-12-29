@@ -1,0 +1,80 @@
+package pages
+
+import (
+    "github.com/JonMunkholm/RevProject1/app/components"
+    "github.com/JonMunkholm/RevProject1/app/layout"
+)
+
+templ MigrationsPage(active string) {
+    @layout.LayoutWithAssets(
+        "Migrations",
+        []string{
+            "/assets/css/tokens.css",
+            "/assets/css/base.css",
+            "/assets/css/components.css",
+            "/assets/css/pages/app.css",
+            "/assets/css/pages/dashboard.css",
+        },
+        MigrationsShell(active),
+    )
+}
+
+templ MigrationsShell(active string) {
+    <div class="dashboard-layout">
+        @components.Sidebar(components.SidebarProps{
+            Brand:       "RevProject",
+            BrandTag:    "Operations",
+            NavItems:    components.DefaultNavItems(active),
+            LogoutURL:   "/auth/logout",
+            SettingsURL: "/app/settings",
+        })
+        @components.MobileMenuButton()
+
+        <main class="dashboard-main">
+            <header class="dashboard-header">
+                <div class="dashboard-header__info">
+                    <h1 class="dashboard-header__title">Migrations</h1>
+                    <p class="dashboard-header__description">Manage database schema migrations and version history.</p>
+                </div>
+                <div class="dashboard-header__actions">
+                    <button type="button" class="btn btn--primary">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <line x1="12" y1="5" x2="12" y2="19"></line>
+                            <line x1="5" y1="12" x2="19" y2="12"></line>
+                        </svg>
+                        New Migration
+                    </button>
+                </div>
+            </header>
+
+            <div class="dashboard-content">
+                <div class="dashboard-panel">
+                    <div class="dashboard-panel__header">
+                        <h2 class="dashboard-panel__title">Migration History</h2>
+                        <p class="dashboard-panel__description">Track database schema changes over time.</p>
+                    </div>
+                    <div class="dashboard-panel__body">
+                        <table class="dashboard-table" aria-live="polite">
+                            <thead>
+                                <tr>
+                                    <th scope="col">Version</th>
+                                    <th scope="col">Name</th>
+                                    <th scope="col">Applied</th>
+                                    <th scope="col">Status</th>
+                                    <th scope="col">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td colspan="5" class="dashboard-table__placeholder">
+                                        No migrations yet. Create your first migration to get started.
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+}

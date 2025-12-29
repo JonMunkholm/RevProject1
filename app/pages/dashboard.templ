@@ -1,0 +1,181 @@
+package pages
+
+import (
+    "github.com/JonMunkholm/RevProject1/app/components"
+    "github.com/JonMunkholm/RevProject1/app/layout"
+)
+
+// MetricCard represents a dashboard metric card configuration.
+type MetricCard struct {
+    ID          string
+    Label       string
+    Value       string
+    DetailLabel string
+    DetailValue string
+    Note        string
+}
+
+// DashboardProps contains all properties for the dashboard page.
+type DashboardProps struct {
+    Active       string
+    Heading      string
+    Description  string
+    StatusText   string
+    Metrics      []MetricCard
+    RefreshPath  string
+}
+
+// DefaultDashboardMetrics returns the default metric cards.
+func DefaultDashboardMetrics() []MetricCard {
+    return []MetricCard{
+        {ID: "users", Label: "Users", Value: "0", DetailLabel: "Active", DetailValue: "0", Note: "People with access to this workspace."},
+        {ID: "customers", Label: "Customers", Value: "0", DetailLabel: "Active", DetailValue: "0", Note: "Customers currently modeled for revenue tracking."},
+        {ID: "contracts", Label: "Contracts", Value: "0", DetailLabel: "Finalized", DetailValue: "0", Note: "Total agreements associated with this company."},
+        {ID: "products", Label: "Products", Value: "0", DetailLabel: "Active", DetailValue: "0", Note: "Sellable catalog entries supporting current deals."},
+        {ID: "bundles", Label: "Bundles", Value: "0", DetailLabel: "Active", DetailValue: "0", Note: "Configured bundles available to assemble offers."},
+        {ID: "performance-obligations", Label: "Performance Obligations", Value: "0", Note: "Tracked fulfillment components connected to contracts."},
+    }
+}
+
+templ DashboardPage(active string) {
+    @layout.LayoutWithAssets(
+        "Workspace Dashboard",
+        []string{
+            "/assets/css/tokens.css",
+            "/assets/css/base.css",
+            "/assets/css/components.css",
+            "/assets/css/pages/app.css",
+            "/assets/css/pages/dashboard.css",
+        },
+        DashboardShell(DashboardProps{
+            Active:      active,
+            Heading:     "Workspace Dashboard",
+            Description: "Monitor contract activity and product coverage across your revenue stack.",
+            StatusText:  "Live",
+            Metrics:     DefaultDashboardMetrics(),
+            RefreshPath: "/app/dashboard",
+        }),
+    )
+}
+
+templ DashboardShell(props DashboardProps) {
+    <div class="dashboard-layout">
+        @components.Sidebar(components.SidebarProps{
+            Brand:       "RevProject",
+            BrandTag:    "Operations",
+            NavItems:    components.DefaultNavItems(props.Active),
+            LogoutURL:   "/auth/logout",
+            SettingsURL: "/app/settings",
+        })
+        @components.MobileMenuButton()
+
+        <main class="dashboard-main">
+            <header class="dashboard-header">
+                <div class="dashboard-header__info">
+                    <h1 class="dashboard-header__title">{ props.Heading }</h1>
+                    <p class="dashboard-header__description">{ props.Description }</p>
+                </div>
+                <div class="dashboard-header__actions">
+                    <span class="dashboard-status" id="dashboard-status">
+                        <span class="dashboard-status__dot"></span>
+                        { props.StatusText }
+                    </span>
+                    if props.RefreshPath != "" {
+                        <button
+                            type="button"
+                            class="dashboard-refresh"
+                            hx-get={ props.RefreshPath }
+                            hx-target="#dashboard-summary"
+                            hx-select="#dashboard-summary"
+                            hx-swap="outerHTML"
+                        >
+                            <svg class="dashboard-refresh__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <polyline points="23 4 23 10 17 10"/>
+                                <polyline points="1 20 1 14 7 14"/>
+                                <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+                            </svg>
+                            Refresh
+                        </button>
+                    }
+                </div>
+            </header>
+
+            <div class="dashboard-content">
+                <section
+                    id="dashboard-summary"
+                    if props.RefreshPath != "" {
+                        hx-get={ props.RefreshPath }
+                        hx-trigger="every 120s"
+                        hx-select="#dashboard-summary"
+                        hx-target="#dashboard-summary"
+                        hx-swap="outerHTML"
+                    }
+                >
+                    @DashboardMetrics(props.Metrics)
+                    @DashboardRecentContracts()
+                </section>
+            </div>
+        </main>
+    </div>
+}
+
+templ DashboardMetrics(metrics []MetricCard) {
+    <div class="dashboard-metrics" aria-label="Workspace metrics">
+        for _, metric := range metrics {
+            @DashboardMetricCard(metric)
+        }
+    </div>
+}
+
+templ DashboardMetricCard(metric MetricCard) {
+    <article class="dashboard-metric" data-metric={ metric.ID }>
+        <div class="dashboard-metric__header">
+            <span class="dashboard-metric__label">{ metric.Label }</span>
+            if metric.DetailLabel != "" {
+                <span class="dashboard-metric__detail">
+                    { metric.DetailLabel }: <span class="dashboard-metric__detail-value">{ metricDetailValue(metric.DetailValue) }</span>
+                </span>
+            }
+        </div>
+        <div class="dashboard-metric__value">{ metric.Value }</div>
+        if metric.Note != "" {
+            <p class="dashboard-metric__note">{ metric.Note }</p>
+        }
+    </article>
+}
+
+func metricDetailValue(value string) string {
+    if value == "" {
+        return "0"
+    }
+    return value
+}
+
+templ DashboardRecentContracts() {
+    <div class="dashboard-panel">
+        <div class="dashboard-panel__header">
+            <h2 class="dashboard-panel__title">Recent Contracts</h2>
+            <p class="dashboard-panel__description">Latest contract updates within your company.</p>
+        </div>
+        <div class="dashboard-panel__body">
+            <table class="dashboard-table" id="recent-contracts" aria-live="polite">
+                <thead>
+                    <tr>
+                        <th scope="col">Customer</th>
+                        <th scope="col">Start</th>
+                        <th scope="col">End</th>
+                        <th scope="col">Status</th>
+                        <th scope="col">Updated</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td colspan="5" class="dashboard-table__placeholder">
+                            Waiting for contract activity...
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+}

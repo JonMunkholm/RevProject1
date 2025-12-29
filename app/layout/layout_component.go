@@ -37,6 +37,10 @@ func LayoutWithAssets(title string, styles []string, body templ.Component) templ
 		if err := write("</head><body hx-boost=\"true\" hx-ext=\"json-enc\">"); err != nil {
 			return err
 		}
+		// Toast notification container
+		if err := write("<div id=\"toast-container\" class=\"toast-container\" aria-live=\"polite\" aria-atomic=\"true\"></div>"); err != nil {
+			return err
+		}
 		if body != nil {
 			if err := body.Render(ctx, w); err != nil {
 				return err
@@ -44,10 +48,18 @@ func LayoutWithAssets(title string, styles []string, body templ.Component) templ
 		}
 		htmxScript := "<script src=\"https://cdn.jsdelivr.net/npm/htmx.org@2.0.7/dist/htmx.min.js\" integrity=\"sha384-ZBXiYtYQ6hJ2Y0ZNoYuI+Nq5MqWBr+chMrS/RkXpNzQCApHEhOt2aY8EJgqwHLkJ\" crossorigin=\"anonymous\" defer></script>"
 		jsonEncScript := "<script src=\"https://cdn.jsdelivr.net/npm/htmx.org@2.0.7/dist/ext/json-enc.js\" crossorigin=\"anonymous\" defer></script>"
+		toastScript := "<script src=\"/assets/js/toast.js\" defer></script>"
+		shortcutsScript := "<script src=\"/assets/js/shortcuts.js\" defer></script>"
 		if err := write(htmxScript); err != nil {
 			return err
 		}
 		if err := write(jsonEncScript); err != nil {
+			return err
+		}
+		if err := write(toastScript); err != nil {
+			return err
+		}
+		if err := write(shortcutsScript); err != nil {
 			return err
 		}
 		return write("</body></html>")

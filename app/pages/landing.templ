@@ -17,12 +17,9 @@ templ LandingContent() {
             <a class="brand" href="/" aria-current="page">RevProject</a>
             <nav class="primary-nav" aria-label="Primary">
                 <ul>
-                    <li><a href="/docs">Documentation</a></li>
-                    <li><a href="/case-studies">Case studies</a></li>
-                    <li><a href="/features">Features</a></li>
-                    <li><a href="/blog">Blog</a></li>
-                    <li><a href="/pricing">Pricing</a></li>
-                    <li><a href="/contact">Contact</a></li>
+                    <li><a href="#feature-heading">Features</a></li>
+                    <li><a href="#performance-heading">Performance</a></li>
+                    <li><a href="#footer-heading">About</a></li>
                 </ul>
             </nav>
             <div class="nav-actions">
@@ -46,7 +43,7 @@ templ LandingContent() {
                     </p>
                     <div class="hero-actions">
                         <a class="button button-primary" href="/register">Get started</a>
-                        <a class="button button-secondary" href="/contact">Book a meeting</a>
+                        <a class="button button-secondary" href="#feature-heading">Learn more</a>
                     </div>
                     <dl class="hero-metrics">
                         <div>
@@ -116,7 +113,7 @@ templ LandingContent() {
                         </div>
                         <h3>Contracts without friction</h3>
                         <p>Automate approvals, versioning, and performance obligations with a programmable workflow engine tied to your CRM and billing systems.</p>
-                        <a class="inline-link" href="/features/contracts">Learn more</a>
+                        <a class="inline-link" href="/register">Get started</a>
                     </li>
                     <li class="feature-card">
                         <div class="feature-icon" aria-hidden="true">
@@ -129,7 +126,7 @@ templ LandingContent() {
                         </div>
                         <h3>Observable revenue health</h3>
                         <p>Stream telemetry into dashboards with percentile latency, forecast accuracy, and renewal risk surfaced for every cohort in real time.</p>
-                        <a class="inline-link" href="/features/analytics">Learn more</a>
+                        <a class="inline-link" href="/register">Get started</a>
                     </li>
                     <li class="feature-card">
                         <div class="feature-icon" aria-hidden="true">
@@ -142,7 +139,7 @@ templ LandingContent() {
                         </div>
                         <h3>Secure by default</h3>
                         <p>Enforce least-privilege access, rotate keys automatically, and audit every change with immutable event trails that satisfy SOC 2 auditors.</p>
-                        <a class="inline-link" href="/security">Learn more</a>
+                        <a class="inline-link" href="/register">Get started</a>
                     </li>
                 </ul>
             </div>
@@ -191,7 +188,7 @@ templ LandingContent() {
                         <span class="cite-role">VP Finance, Northwind Robotics</span>
                     </footer>
                 </blockquote>
-                <a class="inline-link" href="/case-studies">Read the case study</a>
+                <a class="inline-link" href="/register">Get started</a>
             </div>
         </section>
     </main>
@@ -201,38 +198,20 @@ templ LandingContent() {
             <div class="footer-brand">
                 <h2 id="footer-heading">RevProject</h2>
                 <p>Operate revenue-critical workflows without operational drag.</p>
-                <small>© {time.Now().Year()} RevProject. All rights reserved.</small>
-            </div>
-            <div class="footer-column">
-                <h3>Company</h3>
-                <ul>
-                    <li><a href="/about">About</a></li>
-                    <li><a href="/careers">Careers</a></li>
-                    <li><a href="/press">Press</a></li>
-                </ul>
+                <small>© { time.Now().Year() } RevProject. All rights reserved.</small>
             </div>
             <div class="footer-column">
                 <h3>Product</h3>
                 <ul>
-                    <li><a href="/features">Features</a></li>
-                    <li><a href="/pricing">Pricing</a></li>
-                    <li><a href="/integrations">Integrations</a></li>
+                    <li><a href="#feature-heading">Features</a></li>
+                    <li><a href="#performance-heading">Performance</a></li>
                 </ul>
             </div>
             <div class="footer-column">
-                <h3>Resources</h3>
+                <h3>Get Started</h3>
                 <ul>
-                    <li><a href="/docs">Documentation</a></li>
-                    <li><a href="/blog">Blog</a></li>
-                    <li><a href="/support">Support</a></li>
-                </ul>
-            </div>
-            <div class="footer-column">
-                <h3>Legal</h3>
-                <ul>
-                    <li><a href="/legal/privacy">Privacy</a></li>
-                    <li><a href="/legal/terms">Terms</a></li>
-                    <li><a href="/legal/security">Security</a></li>
+                    <li><a href="/register">Sign up</a></li>
+                    <li><a href="/login">Log in</a></li>
                 </ul>
             </div>
         </div>

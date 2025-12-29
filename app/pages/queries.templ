@@ -1,0 +1,258 @@
+package pages
+
+import (
+    "fmt"
+
+    "github.com/JonMunkholm/RevProject1/app/components"
+    "github.com/JonMunkholm/RevProject1/app/layout"
+)
+
+templ QueriesPage(active string) {
+    @layout.LayoutWithAssets(
+        "Query Builder",
+        []string{
+            "/assets/css/tokens.css",
+            "/assets/css/base.css",
+            "/assets/css/components.css",
+            "/assets/css/pages/app.css",
+            "/assets/css/pages/dashboard.css",
+            "/assets/css/pages/queries.css",
+        },
+        QueriesShell(active),
+    )
+}
+
+templ QueriesShell(active string) {
+    <div class="dashboard-layout">
+        @components.Sidebar(components.SidebarProps{
+            Brand:       "RevProject",
+            BrandTag:    "Operations",
+            NavItems:    components.DefaultNavItems(active),
+            LogoutURL:   "/auth/logout",
+            SettingsURL: "/app/settings",
+        })
+        @components.MobileMenuButton()
+
+        <main class="dashboard-main">
+            <header class="dashboard-header">
+                <div class="dashboard-header__info">
+                    <h1 class="dashboard-header__title">Query Builder</h1>
+                    <p class="dashboard-header__description">Write SQL directly or describe what you need in plain English.</p>
+                </div>
+            </header>
+
+            <div class="dashboard-content">
+                @QueryBuilder()
+            </div>
+        </main>
+    </div>
+
+    <!-- Monaco Editor from CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs/loader.js"></script>
+    <script>
+        require.config({ paths: { 'vs': 'https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs' }});
+        window.MonacoEnvironment = {
+            getWorkerUrl: function(workerId, label) {
+                return `data:text/javascript;charset=utf-8,${encodeURIComponent(`
+                    self.MonacoEnvironment = { baseUrl: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/' };
+                    importScripts('https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs/base/worker/workerMain.js');
+                `)}`;
+            }
+        };
+        require(['vs/editor/editor.main'], function() {
+            window.dispatchEvent(new Event('monaco-ready'));
+        });
+    </script>
+    <script src="/assets/js/query-builder.js" type="module" defer></script>
+}
+
+templ QueryBuilder() {
+    <div class="query-builder">
+        <!-- Loading indicator (shared) -->
+        <div id="loading-indicator" class="query-builder__loading-overlay" style="display: none;">
+            <span class="query-builder__spinner"></span>
+            <span id="loading-text">Loading...</span>
+        </div>
+
+        <!-- Error display -->
+        <div id="query-error" style="display: none;"></div>
+
+        <!-- Top Section: SQL Editor with Monaco -->
+        <section class="query-builder__sql-section">
+            <div class="query-builder__section-header">
+                <h2 class="query-builder__section-title">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <ellipse cx="12" cy="5" rx="9" ry="3"></ellipse>
+                        <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"></path>
+                        <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path>
+                    </svg>
+                    SQL Editor
+                </h2>
+                <div class="query-builder__sql-actions">
+                    <button type="button" class="query-builder__action-btn" id="copy-sql-btn" title="Copy to clipboard">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                        </svg>
+                        Copy
+                    </button>
+                    <button type="button" class="query-builder__action-btn" id="clear-sql-btn" title="Clear query">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <line x1="18" y1="6" x2="6" y2="18"></line>
+                            <line x1="6" y1="6" x2="18" y2="18"></line>
+                        </svg>
+                        Clear
+                    </button>
+                    <button type="button" class="query-builder__action-btn query-builder__action-btn--primary" id="run-query-btn" title="Run query (Ctrl+Enter)">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <polygon points="5 3 19 12 5 21 5 3"></polygon>
+                        </svg>
+                        Run Query
+                    </button>
+                </div>
+            </div>
+            <div class="query-builder__sql-editor-wrapper">
+                <div id="sql-editor-container" class="query-builder__monaco-container"></div>
+            </div>
+        </section>
+
+        <!-- Middle Section: Natural Language Input -->
+        <section class="query-builder__nl-section">
+            <div class="query-builder__section-header">
+                <h2 class="query-builder__section-title">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+                    </svg>
+                    AI Query Assistant
+                </h2>
+            </div>
+            <div class="query-builder__nl-form">
+                <div class="query-builder__nl-input-wrapper">
+                    <input
+                        type="text"
+                        id="nl-prompt"
+                        class="query-builder__nl-input"
+                        placeholder="e.g., Show me all active customers with their contract counts, ordered by most contracts first"
+                    />
+                    <button type="button" class="query-builder__nl-submit" id="generate-sql-btn">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+                        </svg>
+                        Generate SQL
+                    </button>
+                </div>
+                <div id="nl-loading" class="query-builder__loading" style="display: none;">
+                    <span class="query-builder__spinner"></span>
+                    <span>Generating SQL...</span>
+                </div>
+                <div id="nl-error"></div>
+                <p class="query-builder__nl-hint">
+                    Press <kbd>Enter</kbd> to generate • <kbd>Ctrl+Enter</kbd> to run query
+                </p>
+            </div>
+        </section>
+
+        <!-- Bottom Section: Results Preview -->
+        <section class="query-builder__results-section">
+            <div class="query-builder__section-header">
+                <h2 class="query-builder__section-title">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                        <line x1="3" y1="9" x2="21" y2="9"></line>
+                        <line x1="9" y1="21" x2="9" y2="9"></line>
+                    </svg>
+                    Query Results
+                </h2>
+                <button type="button" class="query-builder__download-btn" id="download-csv-btn" style="display: none;" title="Download as CSV">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                        <polyline points="7 10 12 15 17 10"/>
+                        <line x1="12" y1="15" x2="12" y2="3"/>
+                    </svg>
+                    Download CSV
+                </button>
+            </div>
+            <div id="query-results" class="query-builder__results">
+                <div class="query-builder__results-placeholder">
+                    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="query-builder__results-empty-icon">
+                        <path d="M3 3h18v18H3z"/>
+                        <path d="M3 9h18"/>
+                        <path d="M9 21V9"/>
+                    </svg>
+                    <p>Query results will appear here</p>
+                    <p class="query-builder__results-hint">Write SQL or use AI to generate a query, then click Run</p>
+                </div>
+            </div>
+        </section>
+    </div>
+}
+
+// QuerySQLOutput returns just the SQL text for the textarea (kept for API compatibility)
+templ QuerySQLOutput(sql string) {
+    { sql }
+}
+
+templ QueryResultsTable(columns []string, rows [][]string, rowCount int) {
+    <div class="query-builder__results-content">
+        <div class="query-builder__results-info">
+            <span class="query-builder__row-count">{ formatRowCount(rowCount) } returned</span>
+        </div>
+        <div class="query-builder__table-wrapper">
+            <table class="query-builder__table">
+                <thead>
+                    <tr>
+                        for _, col := range columns {
+                            <th>{ col }</th>
+                        }
+                    </tr>
+                </thead>
+                <tbody>
+                    if len(rows) == 0 {
+                        <tr>
+                            <td colspan={ fmt.Sprintf("%d", len(columns)) } class="query-builder__table-empty">
+                                No results found
+                            </td>
+                        </tr>
+                    } else {
+                        for _, row := range rows {
+                            <tr>
+                                for _, cell := range row {
+                                    <td>{ cell }</td>
+                                }
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+}
+
+templ QueryResultsError(message string) {
+    <div class="query-builder__results-error">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"></circle>
+            <line x1="12" y1="8" x2="12" y2="12"></line>
+            <line x1="12" y1="16" x2="12.01" y2="16"></line>
+        </svg>
+        <span>{ message }</span>
+    </div>
+}
+
+templ QueryGenerateError(message string) {
+    <div class="query-builder__nl-error">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"></circle>
+            <line x1="12" y1="8" x2="12" y2="12"></line>
+            <line x1="12" y1="16" x2="12.01" y2="16"></line>
+        </svg>
+        <span>{ message }</span>
+    </div>
+}
+
+func formatRowCount(count int) string {
+    if count == 1 {
+        return "1 row"
+    }
+    return fmt.Sprintf("%d rows", count)
+}
