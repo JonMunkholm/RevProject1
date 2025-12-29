@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"hash/crc32"
 	"io"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -50,7 +51,11 @@ func GenerateEmbedding(ctx context.Context, baseURL, apiKey, projectID, model, i
 	if err != nil {
 		return nil, "", err
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if cerr := resp.Body.Close(); cerr != nil {
+			log.Printf("failed to close response body: %v", cerr)
+		}
+	}()
 
 	if resp.StatusCode >= 300 {
 		data, _ := io.ReadAll(resp.Body)

@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"log"
 	"math"
-	"sort"
 	"strings"
 	"time"
 
@@ -28,6 +27,7 @@ type WorkspaceTools struct {
 // CustomerStore exposes customer lookups needed by FetchCustomerTool.
 type CustomerStore interface {
 	GetAllCustomersCompany(ctx context.Context, companyID uuid.UUID) ([]database.Customer, error)
+	SearchCustomersCompany(ctx context.Context, params database.SearchCustomersCompanyParams) ([]database.Customer, error)
 	GetCustomer(ctx context.Context, params database.GetCustomerParams) (database.Customer, error)
 	GetCustomerByName(ctx context.Context, params database.GetCustomerByNameParams) (database.Customer, error)
 }
@@ -39,7 +39,7 @@ type ListCustomersTool struct {
 
 func (ListCustomersTool) Name() string { return "list_customers" }
 func (ListCustomersTool) Summary() string {
-	return "List customers for the current account with optional name filtering"
+	return "Enumerate customers for the current company (use before fetch_customer when multiple records are needed)"
 }
 func (ListCustomersTool) InputSchema() map[string]any {
 	return map[string]any{
@@ -102,21 +102,18 @@ func (h listCustomersHandler) Invoke(ctx context.Context, input map[string]any) 
 	ctxList, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
-	allCustomers, err := h.store.GetAllCustomersCompany(ctxList, session.CompanyID)
+	customers, err := h.store.SearchCustomersCompany(ctxList, database.SearchCustomersCompanyParams{
+		CompanyID:    session.CompanyID,
+		Query:        query,
+		ResultLimit:  int32(limit),
+		ResultOffset: 0,
+	})
 	if err != nil {
 		return Result{}, fmt.Errorf("list customers failed: %w", err)
 	}
 
-	sort.Slice(allCustomers, func(i, j int) bool {
-		return strings.ToLower(allCustomers[i].CustomerName) < strings.ToLower(allCustomers[j].CustomerName)
-	})
-
-	needle := strings.ToLower(query)
-	summaries := make([]map[string]any, 0, limit)
-	for _, c := range allCustomers {
-		if needle != "" && !strings.Contains(strings.ToLower(c.CustomerName), needle) {
-			continue
-		}
+	summaries := make([]map[string]any, 0, len(customers))
+	for _, c := range customers {
 		status := "inactive"
 		if c.IsActive {
 			status = "active"
@@ -126,9 +123,6 @@ func (h listCustomersHandler) Invoke(ctx context.Context, input map[string]any) 
 			"name":   c.CustomerName,
 			"status": status,
 		})
-		if len(summaries) >= limit {
-			break
-		}
 	}
 
 	log.Printf("ai.tool.list_customers: company=%s user=%s count=%d query=%q", session.CompanyID, session.UserID, len(summaries), query)
@@ -141,24 +135,22 @@ type FetchCustomerTool struct {
 	Store CustomerStore
 }
 
-func (FetchCustomerTool) Name() string    { return "fetch_customer" }
-func (FetchCustomerTool) Summary() string { return "Retrieve a customer by unique identifier or name" }
+func (FetchCustomerTool) Name() string { return "fetch_customer" }
+func (FetchCustomerTool) Summary() string {
+	return "Retrieve a single customer by id or exact name (requires one identifier)"
+}
 func (FetchCustomerTool) InputSchema() map[string]any {
 	return map[string]any{
 		"type": "object",
 		"properties": map[string]any{
 			"customer_id": map[string]any{
 				"type":        "string",
-				"description": "Unique identifier of the customer",
+				"description": "Unique identifier of the customer (provide either customer_id or name)",
 			},
 			"name": map[string]any{
 				"type":        "string",
-				"description": "Case-insensitive customer name match",
+				"description": "Case-insensitive customer name match (provide either customer_id or name)",
 			},
-		},
-		"anyOf": []any{
-			map[string]any{"required": []string{"customer_id"}},
-			map[string]any{"required": []string{"name"}},
 		},
 	}
 }
@@ -209,7 +201,12 @@ func (h fetchCustomerHandler) Invoke(ctx context.Context, input map[string]any) 
 			CustomerName: name,
 		})
 	} else {
-		return Result{}, errors.New("provide customer_id or name")
+		return Result{
+			Output: map[string]any{
+				"error": "customer_id or name required",
+				"hint":  "Call list_customers first, then provide a specific customer_id or exact name to fetch_customer.",
+			},
+		}, nil
 	}
 
 	if err != nil {
@@ -292,15 +289,12 @@ func (CreateTicketTool) NewHandler() Handler { return createTicketHandler{} }
 type createTicketHandler struct{}
 
 func (createTicketHandler) Invoke(ctx context.Context, input map[string]any) (Result, error) {
-	// TODO: call ticketing system here. For now we just echo the payload.
+	// Return an error indicating this feature is not yet implemented.
+	// This prevents the AI from believing a ticket was created when it wasn't.
 	return Result{
 		Output: map[string]any{
-			"ticket": map[string]any{
-				"id":          "TICKET-123",
-				"subject":     input["subject"],
-				"description": input["description"],
-				"status":      "open",
-			},
+			"error":   "not_implemented",
+			"message": "Ticket creation is not yet configured. Please contact your administrator to set up ticketing integration.",
 		},
 	}, nil
 }
