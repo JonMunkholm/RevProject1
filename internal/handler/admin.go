@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"time"
 
@@ -84,15 +85,11 @@ func (u *Admin) QuickStart(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	data, err := json.Marshal(map[string]interface{}{"company": company, "user": user, "customer": createCustResp})
-	if err != nil {
-		RespondWithError(w, http.StatusInternalServerError, "Failed to marshal data:", err)
-		return
-	}
-
-	w.WriteHeader(http.StatusCreated)
-	w.Write(data)
-
+	RespondWithJSON(w, http.StatusCreated, map[string]interface{}{
+		"company":  company,
+		"user":     user,
+		"customer": createCustResp,
+	})
 }
 
 func (u *Admin) Reset(w http.ResponseWriter, r *http.Request) {
@@ -132,7 +129,11 @@ func (u *Admin) createNewRecord(ctx context.Context, reqBody interface{}, url st
 	if err != nil {
 		return struct{}{}, fmt.Errorf("failed newCo http request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if cerr := resp.Body.Close(); cerr != nil {
+			log.Printf("failed to close response body: %v", cerr)
+		}
+	}()
 
 	decoder := json.NewDecoder(resp.Body)
 

@@ -2,7 +2,6 @@ package handler
 
 import (
 	"context"
-	"encoding/json"
 	"net/http"
 	"strings"
 	"time"
@@ -26,10 +25,8 @@ type updateCustomerRequest struct {
 }
 
 func (c *Customer) Create(w http.ResponseWriter, r *http.Request) {
-
-	companyID, err := uuid.Parse(chi.URLParam(r, "companyID"))
-	if err != nil {
-		RespondWithError(w, http.StatusBadRequest, "Error missing or invalid company ID:", err)
+	companyID, ok := RequireUUIDParam(w, r, "companyID")
+	if !ok {
 		return
 	}
 
@@ -56,10 +53,8 @@ func (c *Customer) Create(w http.ResponseWriter, r *http.Request) {
 }
 
 func (c *Customer) List(w http.ResponseWriter, r *http.Request) {
-
-	companyID, err := uuid.Parse(chi.URLParam(r, "companyID"))
-	if err != nil {
-		RespondWithError(w, http.StatusBadRequest, "Error missing or invalid company ID:", err)
+	companyID, ok := RequireUUIDParam(w, r, "companyID")
+	if !ok {
 		return
 	}
 
@@ -87,34 +82,23 @@ func (c *Customer) ListAll(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), time.Second*10)
 	defer cancel()
 
-	companies, err := c.DB.GetAllCustomers(ctx)
+	customers, err := c.DB.GetAllCustomers(ctx)
 	if err != nil {
-		RespondWithError(w, http.StatusInternalServerError, "Failed to retrieve companies list:", err)
+		RespondWithError(w, http.StatusInternalServerError, "Failed to retrieve customers list:", err)
 		return
 	}
 
-	res, err := json.Marshal(companies)
-	if err != nil {
-		RespondWithError(w, http.StatusInternalServerError, "Failed to marshal response:", err)
-		return
-	}
-
-	w.WriteHeader(http.StatusOK)
-	w.Write(res)
-
+	RespondWithJSON(w, http.StatusOK, customers)
 }
 
 func (c *Customer) GetById(w http.ResponseWriter, r *http.Request) {
-
-	companyID, err := uuid.Parse(chi.URLParam(r, "companyID"))
-	if err != nil {
-		RespondWithError(w, http.StatusBadRequest, "Error missing or invalid company ID:", err)
+	companyID, ok := RequireUUIDParam(w, r, "companyID")
+	if !ok {
 		return
 	}
 
-	customerID, err := uuid.Parse(chi.URLParam(r, "customerID"))
-	if err != nil {
-		RespondWithError(w, http.StatusBadRequest, "Error missing or invalid customer ID:", err)
+	customerID, ok := RequireUUIDParam(w, r, "customerID")
+	if !ok {
 		return
 	}
 
@@ -141,10 +125,8 @@ func (c *Customer) GetById(w http.ResponseWriter, r *http.Request) {
 }
 
 func (c *Customer) GetByName(w http.ResponseWriter, r *http.Request) {
-
-	companyID, err := uuid.Parse(chi.URLParam(r, "companyID"))
-	if err != nil {
-		RespondWithError(w, http.StatusBadRequest, "Error missing or invalid company ID:", err)
+	companyID, ok := RequireUUIDParam(w, r, "companyID")
+	if !ok {
 		return
 	}
 
@@ -173,10 +155,8 @@ func (c *Customer) GetByName(w http.ResponseWriter, r *http.Request) {
 }
 
 func (c *Customer) GetActive(w http.ResponseWriter, r *http.Request) {
-
-	companyID, err := uuid.Parse(chi.URLParam(r, "companyID"))
-	if err != nil {
-		RespondWithError(w, http.StatusBadRequest, "Error missing or invalid company ID:", err)
+	companyID, ok := RequireUUIDParam(w, r, "companyID")
+	if !ok {
 		return
 	}
 
@@ -199,16 +179,13 @@ func (c *Customer) GetActive(w http.ResponseWriter, r *http.Request) {
 }
 
 func (c *Customer) SetActive(w http.ResponseWriter, r *http.Request) {
-
-	companyID, err := uuid.Parse(chi.URLParam(r, "companyID"))
-	if err != nil {
-		RespondWithError(w, http.StatusBadRequest, "Error missing or invalid company ID:", err)
+	companyID, ok := RequireUUIDParam(w, r, "companyID")
+	if !ok {
 		return
 	}
 
-	customerID, err := uuid.Parse(chi.URLParam(r, "customerID"))
-	if err != nil {
-		RespondWithError(w, http.StatusBadRequest, "Error missing or invalid customer ID:", err)
+	customerID, ok := RequireUUIDParam(w, r, "customerID")
+	if !ok {
 		return
 	}
 
@@ -236,16 +213,13 @@ func (c *Customer) SetActive(w http.ResponseWriter, r *http.Request) {
 }
 
 func (c *Customer) UpdateById(w http.ResponseWriter, r *http.Request) {
-
-	companyID, err := uuid.Parse(chi.URLParam(r, "companyID"))
-	if err != nil {
-		RespondWithError(w, http.StatusBadRequest, "Error missing or invalid company ID:", err)
+	companyID, ok := RequireUUIDParam(w, r, "companyID")
+	if !ok {
 		return
 	}
 
-	customerID, err := uuid.Parse(chi.URLParam(r, "customerID"))
-	if err != nil {
-		RespondWithError(w, http.StatusBadRequest, "Error missing or invalid customer ID:", err)
+	customerID, ok := RequireUUIDParam(w, r, "customerID")
+	if !ok {
 		return
 	}
 
@@ -274,16 +248,13 @@ func (c *Customer) UpdateById(w http.ResponseWriter, r *http.Request) {
 }
 
 func (c *Customer) DeleteById(w http.ResponseWriter, r *http.Request) {
-
-	companyID, err := uuid.Parse(chi.URLParam(r, "companyID"))
-	if err != nil {
-		RespondWithError(w, http.StatusBadRequest, "Error missing or invalid company ID:", err)
+	companyID, ok := RequireUUIDParam(w, r, "companyID")
+	if !ok {
 		return
 	}
 
-	customerID, err := uuid.Parse(chi.URLParam(r, "customerID"))
-	if err != nil {
-		RespondWithError(w, http.StatusBadRequest, "Error missing or invalid customer ID:", err)
+	customerID, ok := RequireUUIDParam(w, r, "customerID")
+	if !ok {
 		return
 	}
 

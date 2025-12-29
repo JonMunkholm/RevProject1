@@ -26,10 +26,8 @@ type updateBundle struct {
 }
 
 func (b *Bundle) Create(w http.ResponseWriter, r *http.Request) {
-
-	companyID, err := uuid.Parse(chi.URLParam(r, "companyID"))
-	if err != nil {
-		RespondWithError(w, http.StatusBadRequest, "Error missing or invalid company ID", err)
+	companyID, ok := RequireUUIDParam(w, r, "companyID")
+	if !ok {
 		return
 	}
 
@@ -60,16 +58,13 @@ func (b *Bundle) Create(w http.ResponseWriter, r *http.Request) {
 }
 
 func (b *Bundle) DeleteByID(w http.ResponseWriter, r *http.Request) {
-
-	companyID, err := uuid.Parse(chi.URLParam(r, "companyID"))
-	if err != nil {
-		RespondWithError(w, http.StatusBadRequest, "Error missing or invalid company ID", err)
+	companyID, ok := RequireUUIDParam(w, r, "companyID")
+	if !ok {
 		return
 	}
 
-	bundleID, err := uuid.Parse(chi.URLParam(r, "bundleID"))
-	if err != nil {
-		RespondWithError(w, http.StatusBadRequest, "Error missing or invalid bundle ID", err)
+	bundleID, ok := RequireUUIDParam(w, r, "bundleID")
+	if !ok {
 		return
 	}
 
@@ -96,16 +91,13 @@ func (b *Bundle) DeleteByID(w http.ResponseWriter, r *http.Request) {
 }
 
 func (b *Bundle) UpdateById(w http.ResponseWriter, r *http.Request) {
-
-	companyID, err := uuid.Parse(chi.URLParam(r, "companyID"))
-	if err != nil {
-		RespondWithError(w, http.StatusBadRequest, "Error missing or invalid company ID", err)
+	companyID, ok := RequireUUIDParam(w, r, "companyID")
+	if !ok {
 		return
 	}
 
-	bundleID, err := uuid.Parse(chi.URLParam(r, "bundleID"))
-	if err != nil {
-		RespondWithError(w, http.StatusBadRequest, "Error missing or invalid bundle ID", err)
+	bundleID, ok := RequireUUIDParam(w, r, "bundleID")
+	if !ok {
 		return
 	}
 
@@ -138,16 +130,13 @@ func (b *Bundle) UpdateById(w http.ResponseWriter, r *http.Request) {
 }
 
 func (b *Bundle) GetByID(w http.ResponseWriter, r *http.Request) {
-
-	companyID, err := uuid.Parse(chi.URLParam(r, "companyID"))
-	if err != nil {
-		RespondWithError(w, http.StatusBadRequest, "Error missing or invalid company ID", err)
+	companyID, ok := RequireUUIDParam(w, r, "companyID")
+	if !ok {
 		return
 	}
 
-	bundleID, err := uuid.Parse(chi.URLParam(r, "bundleID"))
-	if err != nil {
-		RespondWithError(w, http.StatusBadRequest, "Error missing or invalid bundle ID", err)
+	bundleID, ok := RequireUUIDParam(w, r, "bundleID")
+	if !ok {
 		return
 	}
 
@@ -174,10 +163,8 @@ func (b *Bundle) GetByID(w http.ResponseWriter, r *http.Request) {
 }
 
 func (b *Bundle) GetByName(w http.ResponseWriter, r *http.Request) {
-
-	companyID, err := uuid.Parse(chi.URLParam(r, "companyID"))
-	if err != nil {
-		RespondWithError(w, http.StatusBadRequest, "Error missing or invalid company ID", err)
+	companyID, ok := RequireUUIDParam(w, r, "companyID")
+	if !ok {
 		return
 	}
 
@@ -210,16 +197,13 @@ func (b *Bundle) GetByName(w http.ResponseWriter, r *http.Request) {
 }
 
 func (b *Bundle) SetBundleActiveStatus(w http.ResponseWriter, r *http.Request) {
-
-	companyID, err := uuid.Parse(chi.URLParam(r, "companyID"))
-	if err != nil {
-		RespondWithError(w, http.StatusBadRequest, "Error missing or invalid company ID", err)
+	companyID, ok := RequireUUIDParam(w, r, "companyID")
+	if !ok {
 		return
 	}
 
-	bundleID, err := uuid.Parse(chi.URLParam(r, "bundleID"))
-	if err != nil {
-		RespondWithError(w, http.StatusBadRequest, "Error missing or invalid bundle ID", err)
+	bundleID, ok := RequireUUIDParam(w, r, "bundleID")
+	if !ok {
 		return
 	}
 
@@ -247,10 +231,8 @@ func (b *Bundle) SetBundleActiveStatus(w http.ResponseWriter, r *http.Request) {
 }
 
 func (b *Bundle) List(w http.ResponseWriter, r *http.Request) {
-
-	companyID, err := uuid.Parse(chi.URLParam(r, "companyID"))
-	if err != nil {
-		RespondWithError(w, http.StatusBadRequest, "Error missing or invalid company ID", err)
+	companyID, ok := RequireUUIDParam(w, r, "companyID")
+	if !ok {
 		return
 	}
 
@@ -274,10 +256,8 @@ func (b *Bundle) List(w http.ResponseWriter, r *http.Request) {
 }
 
 func (b *Bundle) GetActive(w http.ResponseWriter, r *http.Request) {
-
-	companyID, err := uuid.Parse(chi.URLParam(r, "companyID"))
-	if err != nil {
-		RespondWithError(w, http.StatusBadRequest, "Error missing or invalid company ID", err)
+	companyID, ok := RequireUUIDParam(w, r, "companyID")
+	if !ok {
 		return
 	}
 
@@ -343,22 +323,18 @@ func (b *Bundle) ResetTableBun(w http.ResponseWriter, r *http.Request) {
 }
 
 func (b *Bundle) AddProdToBun(w http.ResponseWriter, r *http.Request) {
-
-	companyID, err := uuid.Parse(chi.URLParam(r, "companyID"))
-	if err != nil {
-		RespondWithError(w, http.StatusBadRequest, "Error missing or invalid company ID", err)
+	companyID, ok := RequireUUIDParam(w, r, "companyID")
+	if !ok {
 		return
 	}
 
-	bundleID, err := uuid.Parse(chi.URLParam(r, "bundleID"))
-	if err != nil {
-		RespondWithError(w, http.StatusBadRequest, "Error missing or invalid bundle ID", err)
+	bundleID, ok := RequireUUIDParam(w, r, "bundleID")
+	if !ok {
 		return
 	}
 
-	productID, err := uuid.Parse(chi.URLParam(r, "productID"))
-	if err != nil {
-		RespondWithError(w, http.StatusBadRequest, "Error missing or invalid product ID", err)
+	productID, ok := RequireUUIDParam(w, r, "productID")
+	if !ok {
 		return
 	}
 
@@ -386,22 +362,18 @@ func (b *Bundle) AddProdToBun(w http.ResponseWriter, r *http.Request) {
 }
 
 func (b *Bundle) DeleteProdFromBun(w http.ResponseWriter, r *http.Request) {
-
-	companyID, err := uuid.Parse(chi.URLParam(r, "companyID"))
-	if err != nil {
-		RespondWithError(w, http.StatusBadRequest, "Error missing or invalid company ID", err)
+	companyID, ok := RequireUUIDParam(w, r, "companyID")
+	if !ok {
 		return
 	}
 
-	bundleID, err := uuid.Parse(chi.URLParam(r, "bundleID"))
-	if err != nil {
-		RespondWithError(w, http.StatusBadRequest, "Error missing or invalid bundle ID", err)
+	bundleID, ok := RequireUUIDParam(w, r, "bundleID")
+	if !ok {
 		return
 	}
 
-	productID, err := uuid.Parse(chi.URLParam(r, "productID"))
-	if err != nil {
-		RespondWithError(w, http.StatusBadRequest, "Error missing or invalid product ID", err)
+	productID, ok := RequireUUIDParam(w, r, "productID")
+	if !ok {
 		return
 	}
 
@@ -429,16 +401,13 @@ func (b *Bundle) DeleteProdFromBun(w http.ResponseWriter, r *http.Request) {
 }
 
 func (b *Bundle) GetProdsInBun(w http.ResponseWriter, r *http.Request) {
-
-	companyID, err := uuid.Parse(chi.URLParam(r, "companyID"))
-	if err != nil {
-		RespondWithError(w, http.StatusBadRequest, "Error missing or invalid company ID", err)
+	companyID, ok := RequireUUIDParam(w, r, "companyID")
+	if !ok {
 		return
 	}
 
-	bundleID, err := uuid.Parse(chi.URLParam(r, "bundleID"))
-	if err != nil {
-		RespondWithError(w, http.StatusBadRequest, "Error missing or invalid bundle ID", err)
+	bundleID, ok := RequireUUIDParam(w, r, "bundleID")
+	if !ok {
 		return
 	}
 
@@ -466,16 +435,13 @@ func (b *Bundle) GetProdsInBun(w http.ResponseWriter, r *http.Request) {
 
 // list the all products in a bundle w/ the product details
 func (b *Bundle) GetProdsInBunDetail(w http.ResponseWriter, r *http.Request) {
-
-	companyID, err := uuid.Parse(chi.URLParam(r, "companyID"))
-	if err != nil {
-		RespondWithError(w, http.StatusBadRequest, "Error missing or invalid company ID", err)
+	companyID, ok := RequireUUIDParam(w, r, "companyID")
+	if !ok {
 		return
 	}
 
-	bundleID, err := uuid.Parse(chi.URLParam(r, "bundleID"))
-	if err != nil {
-		RespondWithError(w, http.StatusBadRequest, "Error missing or invalid bundle ID", err)
+	bundleID, ok := RequireUUIDParam(w, r, "bundleID")
+	if !ok {
 		return
 	}
 
@@ -502,16 +468,13 @@ func (b *Bundle) GetProdsInBunDetail(w http.ResponseWriter, r *http.Request) {
 }
 
 func (b *Bundle) ClearProdsFromBun(w http.ResponseWriter, r *http.Request) {
-
-	companyID, err := uuid.Parse(chi.URLParam(r, "companyID"))
-	if err != nil {
-		RespondWithError(w, http.StatusBadRequest, "Error missing or invalid company ID", err)
+	companyID, ok := RequireUUIDParam(w, r, "companyID")
+	if !ok {
 		return
 	}
 
-	bundleID, err := uuid.Parse(chi.URLParam(r, "bundleID"))
-	if err != nil {
-		RespondWithError(w, http.StatusBadRequest, "Error missing or invalid bundle ID", err)
+	bundleID, ok := RequireUUIDParam(w, r, "bundleID")
+	if !ok {
 		return
 	}
 
@@ -559,16 +522,13 @@ func (b *Bundle) ResetTableProdBun(w http.ResponseWriter, r *http.Request) {
 }
 
 func (b *Bundle) GetBunsWithProd(w http.ResponseWriter, r *http.Request) {
-
-	companyID, err := uuid.Parse(chi.URLParam(r, "companyID"))
-	if err != nil {
-		RespondWithError(w, http.StatusBadRequest, "Error missing or invalid company ID", err)
+	companyID, ok := RequireUUIDParam(w, r, "companyID")
+	if !ok {
 		return
 	}
 
-	productID, err := uuid.Parse(chi.URLParam(r, "productID"))
-	if err != nil {
-		RespondWithError(w, http.StatusBadRequest, "Error missing or invalid product ID", err)
+	productID, ok := RequireUUIDParam(w, r, "productID")
+	if !ok {
 		return
 	}
 

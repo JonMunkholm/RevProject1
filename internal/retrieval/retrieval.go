@@ -258,7 +258,11 @@ func (s *Service) generateEmbedding(ctx context.Context, input string) ([]float3
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if cerr := resp.Body.Close(); cerr != nil {
+			log.Printf("failed to close response body: %v", cerr)
+		}
+	}()
 
 	if resp.StatusCode >= 300 {
 		data, _ := io.ReadAll(resp.Body)

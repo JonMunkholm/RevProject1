@@ -40,6 +40,13 @@ AND Customer_Name = $2;
 SELECT * FROM customers
 WHERE Company_ID = $1;
 
+-- name: SearchCustomersCompany :many
+SELECT * FROM customers
+WHERE Company_ID = @company_id
+AND (@query::text = '' OR LOWER(Customer_Name) LIKE '%' || LOWER(@query::text) || '%')
+ORDER BY LOWER(Customer_Name)
+LIMIT @result_limit OFFSET @result_offset;
+
 -- name: GetActiveCustomersCompany :many
 SELECT * FROM customers
 WHERE Company_ID = $1

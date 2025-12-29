@@ -219,6 +219,56 @@ func (q *Queries) ResetCustomers(ctx context.Context) error {
 	return err
 }
 
+const searchCustomersCompany = `-- name: SearchCustomersCompany :many
+SELECT id, customer_name, created_at, updated_at, is_active, company_id FROM customers
+WHERE Company_ID = $1
+AND ($2::text = '' OR LOWER(Customer_Name) LIKE '%' || LOWER($2::text) || '%')
+ORDER BY LOWER(Customer_Name)
+LIMIT $4 OFFSET $3
+`
+
+type SearchCustomersCompanyParams struct {
+	CompanyID    uuid.UUID
+	Query        string
+	ResultOffset int32
+	ResultLimit  int32
+}
+
+func (q *Queries) SearchCustomersCompany(ctx context.Context, arg SearchCustomersCompanyParams) ([]Customer, error) {
+	rows, err := q.db.QueryContext(ctx, searchCustomersCompany,
+		arg.CompanyID,
+		arg.Query,
+		arg.ResultOffset,
+		arg.ResultLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Customer
+	for rows.Next() {
+		var i Customer
+		if err := rows.Scan(
+			&i.ID,
+			&i.CustomerName,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.IsActive,
+			&i.CompanyID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const setCustomerActiveStatus = `-- name: SetCustomerActiveStatus :exec
 UPDATE customers
 SET Is_Active = $1

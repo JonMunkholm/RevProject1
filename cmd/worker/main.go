@@ -685,7 +685,16 @@ func newWorkerMetrics() *workerMetrics {
 		}, []string{"result"}),
 	}
 
-	prometheus.MustRegister(m.jobsProcessed, m.jobsFailed, m.jobsDeadLetter, m.openaiLatency)
+	// Register metrics with the default registry. Log errors but don't panic
+	// to allow graceful handling of duplicate registrations.
+	for _, c := range []prometheus.Collector{m.jobsProcessed, m.jobsFailed, m.jobsDeadLetter, m.openaiLatency} {
+		if err := prometheus.Register(c); err != nil {
+			// Check if it's already registered (which is fine)
+			if _, ok := err.(prometheus.AlreadyRegisteredError); !ok {
+				log.Printf("failed to register prometheus metric: %v", err)
+			}
+		}
+	}
 	return m
 }
 

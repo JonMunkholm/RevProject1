@@ -2,7 +2,6 @@ package handler
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"net/http"
 	"strings"
@@ -39,10 +38,8 @@ type userResponse struct {
 }
 
 func (u *User) Create(w http.ResponseWriter, r *http.Request) {
-
-	companyID, err := uuid.Parse(chi.URLParam(r, "companyID"))
-	if err != nil {
-		RespondWithError(w, http.StatusBadRequest, "Error missing or invalid company ID:", err)
+	companyID, ok := RequireUUIDParam(w, r, "companyID")
+	if !ok {
 		return
 	}
 
@@ -101,22 +98,12 @@ func (u *User) ListAll(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	res, err := json.Marshal(newUserList(users))
-	if err != nil {
-		RespondWithError(w, http.StatusInternalServerError, "Failed to marshal response:", err)
-		return
-	}
-
-	w.WriteHeader(http.StatusOK)
-	w.Write(res)
-
+	RespondWithJSON(w, http.StatusOK, newUserList(users))
 }
 
 func (u *User) List(w http.ResponseWriter, r *http.Request) {
-
-	companyID, err := uuid.Parse(chi.URLParam(r, "companyID"))
-	if err != nil {
-		RespondWithError(w, http.StatusBadRequest, "Error missing or invalid company ID:", err)
+	companyID, ok := RequireUUIDParam(w, r, "companyID")
+	if !ok {
 		return
 	}
 
@@ -144,16 +131,13 @@ func (u *User) List(w http.ResponseWriter, r *http.Request) {
 }
 
 func (u *User) GetById(w http.ResponseWriter, r *http.Request) {
-
-	companyID, err := uuid.Parse(chi.URLParam(r, "companyID"))
-	if err != nil {
-		RespondWithError(w, http.StatusBadRequest, "Error missing or invalid company ID:", err)
+	companyID, ok := RequireUUIDParam(w, r, "companyID")
+	if !ok {
 		return
 	}
 
-	userID, err := uuid.Parse(chi.URLParam(r, "userID"))
-	if err != nil {
-		RespondWithError(w, http.StatusBadRequest, "Error missing or invalid user ID:", err)
+	userID, ok := RequireUUIDParam(w, r, "userID")
+	if !ok {
 		return
 	}
 
@@ -184,10 +168,8 @@ func (u *User) GetById(w http.ResponseWriter, r *http.Request) {
 }
 
 func (u *User) GetByEmail(w http.ResponseWriter, r *http.Request) {
-
-	companyID, err := uuid.Parse(chi.URLParam(r, "companyID"))
-	if err != nil {
-		RespondWithError(w, http.StatusBadRequest, "Error missing or invalid company ID:", err)
+	companyID, ok := RequireUUIDParam(w, r, "companyID")
+	if !ok {
 		return
 	}
 
@@ -219,16 +201,13 @@ func (u *User) GetByEmail(w http.ResponseWriter, r *http.Request) {
 }
 
 func (u *User) UpdateById(w http.ResponseWriter, r *http.Request) {
-
-	companyID, err := uuid.Parse(chi.URLParam(r, "companyID"))
-	if err != nil {
-		RespondWithError(w, http.StatusBadRequest, "Error missing or invalid company ID:", err)
+	companyID, ok := RequireUUIDParam(w, r, "companyID")
+	if !ok {
 		return
 	}
 
-	userID, err := uuid.Parse(chi.URLParam(r, "userID"))
-	if err != nil {
-		RespondWithError(w, http.StatusBadRequest, "Error missing or invalid user ID:", err)
+	userID, ok := RequireUUIDParam(w, r, "userID")
+	if !ok {
 		return
 	}
 
@@ -270,16 +249,13 @@ func (u *User) UpdateById(w http.ResponseWriter, r *http.Request) {
 }
 
 func (u *User) DeleteById(w http.ResponseWriter, r *http.Request) {
-
-	companyID, err := uuid.Parse(chi.URLParam(r, "companyID"))
-	if err != nil {
-		RespondWithError(w, http.StatusBadRequest, "Error missing or invalid company ID:", err)
+	companyID, ok := RequireUUIDParam(w, r, "companyID")
+	if !ok {
 		return
 	}
 
-	userID, err := uuid.Parse(chi.URLParam(r, "userID"))
-	if err != nil {
-		RespondWithError(w, http.StatusBadRequest, "Error missing or invalid user ID:", err)
+	userID, ok := RequireUUIDParam(w, r, "userID")
+	if !ok {
 		return
 	}
 
@@ -325,10 +301,8 @@ func (u *User) ResetTable(w http.ResponseWriter, r *http.Request) {
 }
 
 func (u *User) GetActive(w http.ResponseWriter, r *http.Request) {
-
-	companyID, err := uuid.Parse(chi.URLParam(r, "companyID"))
-	if err != nil {
-		RespondWithError(w, http.StatusBadRequest, "Error missing or invalid company ID:", err)
+	companyID, ok := RequireUUIDParam(w, r, "companyID")
+	if !ok {
 		return
 	}
 
@@ -356,16 +330,13 @@ func (u *User) GetActive(w http.ResponseWriter, r *http.Request) {
 }
 
 func (u *User) SetActive(w http.ResponseWriter, r *http.Request) {
-
-	companyID, err := uuid.Parse(chi.URLParam(r, "companyID"))
-	if err != nil {
-		RespondWithError(w, http.StatusBadRequest, "Error missing or invalid company ID:", err)
+	companyID, ok := RequireUUIDParam(w, r, "companyID")
+	if !ok {
 		return
 	}
 
-	userID, err := uuid.Parse(chi.URLParam(r, "userID"))
-	if err != nil {
-		RespondWithError(w, http.StatusBadRequest, "Error missing or invalid user ID:", err)
+	userID, ok := RequireUUIDParam(w, r, "userID")
+	if !ok {
 		return
 	}
 

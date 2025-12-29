@@ -10,6 +10,7 @@ import (
 	"log"
 	"net/http"
 
+	"github.com/go-chi/chi"
 	"github.com/google/uuid"
 )
 
@@ -35,7 +36,9 @@ func RespondWithJSON(w http.ResponseWriter, code int, payload interface{}) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code)
-	w.Write(dat)
+	if _, err := w.Write(dat); err != nil {
+		log.Printf("failed to write response: %v", err)
+	}
 }
 
 func decodeJSON(r *http.Request, dst any) error {
@@ -92,10 +95,28 @@ func processRequest[Req, Arg, Res interface{}](
 	return result, nil
 }
 
-func companyIDFromRequest(bodyID uuid.UUID) (uuid.UUID, error) {
-	if bodyID != uuid.Nil {
-		return bodyID, nil
+// ParseUUIDParam extracts and parses a UUID from a chi URL parameter.
+// Returns the parsed UUID or an error if the parameter is missing or invalid.
+func ParseUUIDParam(r *http.Request, param string) (uuid.UUID, error) {
+	raw := chi.URLParam(r, param)
+	if raw == "" {
+		return uuid.Nil, fmt.Errorf("%s is required", param)
 	}
+	id, err := uuid.Parse(raw)
+	if err != nil {
+		return uuid.Nil, fmt.Errorf("invalid %s: %w", param, err)
+	}
+	return id, nil
+}
 
-	return uuid.Nil, fmt.Errorf("CompanyID is required")
+// RequireUUIDParam extracts a UUID from a chi URL parameter and writes an error
+// response if parsing fails. Returns the parsed UUID and true on success, or
+// uuid.Nil and false if an error response was written.
+func RequireUUIDParam(w http.ResponseWriter, r *http.Request, param string) (uuid.UUID, bool) {
+	id, err := ParseUUIDParam(r, param)
+	if err != nil {
+		RespondWithError(w, http.StatusBadRequest, fmt.Sprintf("invalid %s", param), err)
+		return uuid.Nil, false
+	}
+	return id, true
 }

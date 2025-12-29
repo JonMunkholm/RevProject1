@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/JonMunkholm/RevProject1/internal/database"
-	"github.com/go-chi/chi"
 	"github.com/google/uuid"
 )
 
@@ -36,10 +35,8 @@ type companyContractsRequest struct {
 }
 
 func (c *Contract) Create(w http.ResponseWriter, r *http.Request) {
-
-	companyID, err := uuid.Parse(chi.URLParam(r, "companyID"))
-	if err != nil {
-		RespondWithError(w, http.StatusBadRequest, "Error missing or invalid company ID", err)
+	companyID, ok := RequireUUIDParam(w, r, "companyID")
+	if !ok {
 		return
 	}
 
@@ -81,10 +78,8 @@ func (c *Contract) Create(w http.ResponseWriter, r *http.Request) {
 }
 
 func (c *Contract) List(w http.ResponseWriter, r *http.Request) {
-
-	companyID, err := uuid.Parse(chi.URLParam(r, "companyID"))
-	if err != nil {
-		RespondWithError(w, http.StatusBadRequest, "Error missing or invalid company ID", err)
+	companyID, ok := RequireUUIDParam(w, r, "companyID")
+	if !ok {
 		return
 	}
 
@@ -108,16 +103,13 @@ func (c *Contract) List(w http.ResponseWriter, r *http.Request) {
 }
 
 func (c *Contract) ListCustomer(w http.ResponseWriter, r *http.Request) {
-
-	companyID, err := uuid.Parse(chi.URLParam(r, "companyID"))
-	if err != nil {
-		RespondWithError(w, http.StatusBadRequest, "Error missing or invalid company ID", err)
+	companyID, ok := RequireUUIDParam(w, r, "companyID")
+	if !ok {
 		return
 	}
 
-	customerID, err := uuid.Parse(chi.URLParam(r, "customerID"))
-	if err != nil {
-		RespondWithError(w, http.StatusBadRequest, "Error missing or invalid customer ID", err)
+	customerID, ok := RequireUUIDParam(w, r, "customerID")
+	if !ok {
 		return
 	}
 
@@ -165,16 +157,13 @@ func (c *Contract) ListAll(w http.ResponseWriter, r *http.Request) {
 }
 
 func (c *Contract) GetById(w http.ResponseWriter, r *http.Request) {
-
-	companyID, err := uuid.Parse(chi.URLParam(r, "companyID"))
-	if err != nil {
-		RespondWithError(w, http.StatusBadRequest, "Error missing or invalid company ID", err)
+	companyID, ok := RequireUUIDParam(w, r, "companyID")
+	if !ok {
 		return
 	}
 
-	contractID, err := uuid.Parse(chi.URLParam(r, "contractID"))
-	if err != nil {
-		RespondWithError(w, http.StatusBadRequest, "Error missing or invalid contract ID:", err)
+	contractID, ok := RequireUUIDParam(w, r, "contractID")
+	if !ok {
 		return
 	}
 
@@ -201,10 +190,8 @@ func (c *Contract) GetById(w http.ResponseWriter, r *http.Request) {
 }
 
 func (c *Contract) GetFinal(w http.ResponseWriter, r *http.Request) {
-
-	companyID, err := uuid.Parse(chi.URLParam(r, "companyID"))
-	if err != nil {
-		RespondWithError(w, http.StatusBadRequest, "Error missing or invalid company ID:", err)
+	companyID, ok := RequireUUIDParam(w, r, "companyID")
+	if !ok {
 		return
 	}
 
@@ -227,16 +214,13 @@ func (c *Contract) GetFinal(w http.ResponseWriter, r *http.Request) {
 }
 
 func (c *Contract) UpdateById(w http.ResponseWriter, r *http.Request) {
-
-	companyID, err := uuid.Parse(chi.URLParam(r, "companyID"))
-	if err != nil {
-		RespondWithError(w, http.StatusBadRequest, "Error missing or invalid company ID", err)
+	companyID, ok := RequireUUIDParam(w, r, "companyID")
+	if !ok {
 		return
 	}
 
-	contractID, err := uuid.Parse(chi.URLParam(r, "contractID"))
-	if err != nil {
-		RespondWithError(w, http.StatusBadRequest, "Error missing or invalid contract ID:", err)
+	contractID, ok := RequireUUIDParam(w, r, "contractID")
+	if !ok {
 		return
 	}
 
@@ -279,16 +263,13 @@ func (c *Contract) UpdateById(w http.ResponseWriter, r *http.Request) {
 }
 
 func (c *Contract) DeleteById(w http.ResponseWriter, r *http.Request) {
-
-	companyID, err := uuid.Parse(chi.URLParam(r, "companyID"))
-	if err != nil {
-		RespondWithError(w, http.StatusBadRequest, "Error missing or invalid company ID", err)
+	companyID, ok := RequireUUIDParam(w, r, "companyID")
+	if !ok {
 		return
 	}
 
-	contractID, err := uuid.Parse(chi.URLParam(r, "contractID"))
-	if err != nil {
-		RespondWithError(w, http.StatusBadRequest, "Error missing or invalid contract ID:", err)
+	contractID, ok := RequireUUIDParam(w, r, "contractID")
+	if !ok {
 		return
 	}
 

@@ -43,10 +43,8 @@ type companyProductsRequest struct {
 }
 
 func (p *Product) Create(w http.ResponseWriter, r *http.Request) {
-
-	companyID, err := uuid.Parse(chi.URLParam(r, "companyID"))
-	if err != nil {
-		RespondWithError(w, http.StatusBadRequest, "Error missing or invalid company ID:", err)
+	companyID, ok := RequireUUIDParam(w, r, "companyID")
+	if !ok {
 		return
 	}
 
@@ -107,10 +105,8 @@ func (p *Product) Create(w http.ResponseWriter, r *http.Request) {
 }
 
 func (p *Product) List(w http.ResponseWriter, r *http.Request) {
-
-	companyID, err := uuid.Parse(chi.URLParam(r, "companyID"))
-	if err != nil {
-		RespondWithError(w, http.StatusBadRequest, "Error missing or invalid company ID:", err)
+	companyID, ok := RequireUUIDParam(w, r, "companyID")
+	if !ok {
 		return
 	}
 
@@ -153,10 +149,8 @@ func (p *Product) ListAll(w http.ResponseWriter, r *http.Request) {
 }
 
 func (p *Product) GetActive(w http.ResponseWriter, r *http.Request) {
-
-	companyID, err := uuid.Parse(chi.URLParam(r, "companyID"))
-	if err != nil {
-		RespondWithError(w, http.StatusBadRequest, "Error missing or invalid company ID:", err)
+	companyID, ok := RequireUUIDParam(w, r, "companyID")
+	if !ok {
 		return
 	}
 
@@ -179,16 +173,13 @@ func (p *Product) GetActive(w http.ResponseWriter, r *http.Request) {
 }
 
 func (p *Product) GetById(w http.ResponseWriter, r *http.Request) {
-
-	companyID, err := uuid.Parse(chi.URLParam(r, "companyID"))
-	if err != nil {
-		RespondWithError(w, http.StatusBadRequest, "Error missing or invalid company ID:", err)
+	companyID, ok := RequireUUIDParam(w, r, "companyID")
+	if !ok {
 		return
 	}
 
-	productID, err := uuid.Parse(chi.URLParam(r, "productID"))
-	if err != nil {
-		RespondWithError(w, http.StatusBadRequest, "Error missing or invalid product ID:", err)
+	productID, ok := RequireUUIDParam(w, r, "productID")
+	if !ok {
 		return
 	}
 
@@ -215,10 +206,8 @@ func (p *Product) GetById(w http.ResponseWriter, r *http.Request) {
 }
 
 func (p *Product) GetByName(w http.ResponseWriter, r *http.Request) {
-
-	companyID, err := uuid.Parse(chi.URLParam(r, "companyID"))
-	if err != nil {
-		RespondWithError(w, http.StatusBadRequest, "Error missing or invalid company ID:", err)
+	companyID, ok := RequireUUIDParam(w, r, "companyID")
+	if !ok {
 		return
 	}
 
@@ -247,16 +236,13 @@ func (p *Product) GetByName(w http.ResponseWriter, r *http.Request) {
 }
 
 func (p *Product) UpdateById(w http.ResponseWriter, r *http.Request) {
-
-	companyID, err := uuid.Parse(chi.URLParam(r, "companyID"))
-	if err != nil {
-		RespondWithError(w, http.StatusBadRequest, "Error missing or invalid company ID:", err)
+	companyID, ok := RequireUUIDParam(w, r, "companyID")
+	if !ok {
 		return
 	}
 
-	productID, err := uuid.Parse(chi.URLParam(r, "productID"))
-	if err != nil {
-		RespondWithError(w, http.StatusBadRequest, "Error missing or invalid product ID:", err)
+	productID, ok := RequireUUIDParam(w, r, "productID")
+	if !ok {
 		return
 	}
 
@@ -319,16 +305,13 @@ func (p *Product) UpdateById(w http.ResponseWriter, r *http.Request) {
 }
 
 func (p *Product) SetActive(w http.ResponseWriter, r *http.Request) {
-
-	companyID, err := uuid.Parse(chi.URLParam(r, "companyID"))
-	if err != nil {
-		RespondWithError(w, http.StatusBadRequest, "Error missing or invalid company ID:", err)
+	companyID, ok := RequireUUIDParam(w, r, "companyID")
+	if !ok {
 		return
 	}
 
-	productID, err := uuid.Parse(chi.URLParam(r, "productID"))
-	if err != nil {
-		RespondWithError(w, http.StatusBadRequest, "Error missing or invalid product ID:", err)
+	productID, ok := RequireUUIDParam(w, r, "productID")
+	if !ok {
 		return
 	}
 
@@ -356,16 +339,13 @@ func (p *Product) SetActive(w http.ResponseWriter, r *http.Request) {
 }
 
 func (p *Product) DeleteById(w http.ResponseWriter, r *http.Request) {
-
-	companyID, err := uuid.Parse(chi.URLParam(r, "companyID"))
-	if err != nil {
-		RespondWithError(w, http.StatusBadRequest, "Error missing or invalid company ID:", err)
+	companyID, ok := RequireUUIDParam(w, r, "companyID")
+	if !ok {
 		return
 	}
 
-	productID, err := uuid.Parse(chi.URLParam(r, "productID"))
-	if err != nil {
-		RespondWithError(w, http.StatusBadRequest, "Error missing or invalid product ID:", err)
+	productID, ok := RequireUUIDParam(w, r, "productID")
+	if !ok {
 		return
 	}
 
@@ -392,10 +372,8 @@ func (p *Product) DeleteById(w http.ResponseWriter, r *http.Request) {
 }
 
 func (p *Product) ResetCompanyTable(w http.ResponseWriter, r *http.Request) {
-
-	companyID, err := uuid.Parse(chi.URLParam(r, "companyID"))
-	if err != nil {
-		RespondWithError(w, http.StatusBadRequest, "Error missing or invalid company ID:", err)
+	companyID, ok := RequireUUIDParam(w, r, "companyID")
+	if !ok {
 		return
 	}
 

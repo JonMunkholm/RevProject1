@@ -2,7 +2,7 @@ package main
 
 import (
 	"context"
-	"fmt"
+	"log"
 	"os"
 	"os/signal"
 
@@ -13,15 +13,17 @@ import (
 func main() {
 	godotenv.Load()
 
-	app := application.New()
+	app, err := application.New()
+	if err != nil {
+		log.Fatalf("failed to initialize app: %v", err)
+	}
 
-	//Graceful shutdown of server, allows for DB to finish update or will notify of failure.
+	// Graceful shutdown of server, allows for DB to finish update or will notify of failure.
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer cancel()
 
-	err := app.Start(ctx)
-	if err != nil {
-		fmt.Println("failed to start app:", err)
+	if err := app.Start(ctx); err != nil {
+		log.Fatalf("failed to start app: %v", err)
 	}
 
 	// 		r.Use(middleware.RequestID)
