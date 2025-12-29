@@ -1,0 +1,92 @@
+package components
+
+// CardProps defines properties for card components.
+type CardProps struct {
+	Elevated    bool
+	Interactive bool
+	Class       string
+}
+
+// cardClasses generates CSS classes for the card.
+func cardClasses(props CardProps) string {
+	classes := "card"
+	if props.Elevated {
+		classes += " card--elevated"
+	}
+	if props.Interactive {
+		classes += " card--interactive"
+	}
+	if props.Class != "" {
+		classes += " " + props.Class
+	}
+	return classes
+}
+
+// Card renders a basic card container.
+templ Card(props CardProps) {
+	<div class={ cardClasses(props) }>
+		{ children... }
+	</div>
+}
+
+// CardHeader renders the card header section.
+templ CardHeader() {
+	<div class="card__header">
+		{ children... }
+	</div>
+}
+
+// CardBody renders the card body section.
+templ CardBody() {
+	<div class="card__body">
+		{ children... }
+	</div>
+}
+
+// CardFooter renders the card footer section.
+templ CardFooter() {
+	<div class="card__footer">
+		{ children... }
+	</div>
+}
+
+// MetricCardProps defines properties for metric display cards.
+type MetricCardProps struct {
+	Label  string
+	Value  string
+	Change string // e.g., "+12%" or "-5%"
+	Trend  string // positive, negative, neutral
+	Class  string
+}
+
+// MetricCard renders a card optimized for displaying metrics/KPIs.
+templ MetricCard(props MetricCardProps) {
+	<div class={ "card metric-card " + props.Class }>
+		<div class="metric-card__label">{ props.Label }</div>
+		<div class="metric-card__value">{ props.Value }</div>
+		if props.Change != "" {
+			<div class={ metricChangeClass(props.Trend) }>{ props.Change }</div>
+		}
+	</div>
+}
+
+// metricChangeClass returns the appropriate CSS class for the change indicator.
+func metricChangeClass(trend string) string {
+	base := "metric-card__change"
+	switch trend {
+	case "positive":
+		return base + " metric-card__change--positive"
+	case "negative":
+		return base + " metric-card__change--negative"
+	default:
+		return base
+	}
+}
+
+// StatCard is a simpler metric card variant.
+templ StatCard(label, value string) {
+	<div class="card metric-card">
+		<div class="metric-card__label">{ label }</div>
+		<div class="metric-card__value">{ value }</div>
+	</div>
+}

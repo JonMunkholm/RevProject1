@@ -1,0 +1,89 @@
+package components
+
+// NoticeVariant represents the visual style of a notice.
+type NoticeVariant string
+
+const (
+	NoticeInfo    NoticeVariant = "info"
+	NoticeSuccess NoticeVariant = "success"
+	NoticeWarning NoticeVariant = "warning"
+	NoticeError   NoticeVariant = "error"
+)
+
+// noticeClasses generates CSS classes for the notice.
+func noticeClasses(variant NoticeVariant) string {
+	base := "notice"
+	switch variant {
+	case NoticeSuccess:
+		return base + " notice--success"
+	case NoticeWarning:
+		return base + " notice--warning"
+	case NoticeError:
+		return base + " notice--error"
+	default:
+		return base + " notice--info"
+	}
+}
+
+// Notice renders a notice/alert message.
+templ Notice(variant NoticeVariant, message string) {
+	<div class={ noticeClasses(variant) } role="alert">
+		<svg class="notice__icon" viewBox="0 0 20 20" fill="currentColor">
+			switch variant {
+			case NoticeSuccess:
+				<path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.857-9.809a.75.75 0 00-1.214-.882l-3.483 4.79-1.88-1.88a.75.75 0 10-1.06 1.061l2.5 2.5a.75.75 0 001.137-.089l4-5.5z" clip-rule="evenodd"/>
+			case NoticeWarning:
+				<path fill-rule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 5a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 5zm0 9a1 1 0 100-2 1 1 0 000 2z" clip-rule="evenodd"/>
+			case NoticeError:
+				<path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.28 7.22a.75.75 0 00-1.06 1.06L8.94 10l-1.72 1.72a.75.75 0 101.06 1.06L10 11.06l1.72 1.72a.75.75 0 101.06-1.06L11.06 10l1.72-1.72a.75.75 0 00-1.06-1.06L10 8.94 8.28 7.22z" clip-rule="evenodd"/>
+			default:
+				<path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a.75.75 0 000 1.5h.253a.25.25 0 01.244.304l-.459 2.066A1.75 1.75 0 0010.747 15H11a.75.75 0 000-1.5h-.253a.25.25 0 01-.244-.304l.459-2.066A1.75 1.75 0 009.253 9H9z" clip-rule="evenodd"/>
+			}
+		</svg>
+		<div class="notice__content">
+			<p class="notice__message">{ message }</p>
+		</div>
+	</div>
+}
+
+// NoticeWithTitle renders a notice with a title and message.
+templ NoticeWithTitle(variant NoticeVariant, title, message string) {
+	<div class={ noticeClasses(variant) } role="alert">
+		<svg class="notice__icon" viewBox="0 0 20 20" fill="currentColor">
+			switch variant {
+			case NoticeSuccess:
+				<path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.857-9.809a.75.75 0 00-1.214-.882l-3.483 4.79-1.88-1.88a.75.75 0 10-1.06 1.061l2.5 2.5a.75.75 0 001.137-.089l4-5.5z" clip-rule="evenodd"/>
+			case NoticeWarning:
+				<path fill-rule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 5a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 5zm0 9a1 1 0 100-2 1 1 0 000 2z" clip-rule="evenodd"/>
+			case NoticeError:
+				<path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.28 7.22a.75.75 0 00-1.06 1.06L8.94 10l-1.72 1.72a.75.75 0 101.06 1.06L10 11.06l1.72 1.72a.75.75 0 101.06-1.06L11.06 10l1.72-1.72a.75.75 0 00-1.06-1.06L10 8.94 8.28 7.22z" clip-rule="evenodd"/>
+			default:
+				<path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a.75.75 0 000 1.5h.253a.25.25 0 01.244.304l-.459 2.066A1.75 1.75 0 0010.747 15H11a.75.75 0 000-1.5h-.253a.25.25 0 01-.244-.304l.459-2.066A1.75 1.75 0 009.253 9H9z" clip-rule="evenodd"/>
+			}
+		</svg>
+		<div class="notice__content">
+			<p class="notice__title">{ title }</p>
+			<p class="notice__message">{ message }</p>
+		</div>
+	</div>
+}
+
+// InfoNotice is a convenience wrapper for info notices.
+templ InfoNotice(message string) {
+	@Notice(NoticeInfo, message)
+}
+
+// SuccessNotice is a convenience wrapper for success notices.
+templ SuccessNotice(message string) {
+	@Notice(NoticeSuccess, message)
+}
+
+// WarningNotice is a convenience wrapper for warning notices.
+templ WarningNotice(message string) {
+	@Notice(NoticeWarning, message)
+}
+
+// ErrorNotice is a convenience wrapper for error notices.
+templ ErrorNotice(message string) {
+	@Notice(NoticeError, message)
+}

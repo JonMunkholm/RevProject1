@@ -1,0 +1,84 @@
+package components
+
+// BadgeVariant represents the visual style of a badge.
+type BadgeVariant string
+
+const (
+	BadgeDefault BadgeVariant = "default"
+	BadgeSuccess BadgeVariant = "success"
+	BadgeWarning BadgeVariant = "warning"
+	BadgeError   BadgeVariant = "error"
+	BadgeInfo    BadgeVariant = "info"
+	BadgeAccent  BadgeVariant = "accent"
+)
+
+// badgeClasses generates CSS classes for the badge.
+func badgeClasses(variant BadgeVariant) string {
+	base := "badge"
+	switch variant {
+	case BadgeSuccess:
+		return base + " badge--success"
+	case BadgeWarning:
+		return base + " badge--warning"
+	case BadgeError:
+		return base + " badge--error"
+	case BadgeInfo:
+		return base + " badge--info"
+	case BadgeAccent:
+		return base + " badge--accent"
+	default:
+		return base + " badge--default"
+	}
+}
+
+// Badge renders a simple badge element.
+templ Badge(variant BadgeVariant) {
+	<span class={ badgeClasses(variant) }>
+		{ children... }
+	</span>
+}
+
+// BadgeWithDot renders a badge with a status dot indicator.
+templ BadgeWithDot(variant BadgeVariant) {
+	<span class={ badgeClasses(variant) }>
+		<span class="badge__dot"></span>
+		{ children... }
+	</span>
+}
+
+// StatusBadge renders a badge for common status values.
+templ StatusBadge(status string) {
+	switch status {
+	case "active", "success", "succeeded", "online", "healthy":
+		@BadgeWithDot(BadgeSuccess) {
+			{ status }
+		}
+	case "pending", "processing", "running":
+		@BadgeWithDot(BadgeInfo) {
+			{ status }
+		}
+	case "warning", "degraded":
+		@BadgeWithDot(BadgeWarning) {
+			{ status }
+		}
+	case "error", "failed", "offline", "unhealthy":
+		@BadgeWithDot(BadgeError) {
+			{ status }
+		}
+	case "inactive", "disabled":
+		@Badge(BadgeDefault) {
+			{ status }
+		}
+	default:
+		@Badge(BadgeDefault) {
+			{ status }
+		}
+	}
+}
+
+// ProviderBadge renders a badge for AI provider identification.
+templ ProviderBadge(provider string) {
+	<span class="badge badge--accent">
+		{ provider }
+	</span>
+}

@@ -1,0 +1,108 @@
+package components
+
+// SkeletonLine renders a single skeleton line placeholder.
+templ SkeletonLine(width string) {
+	<div class={ "skeleton skeleton--line", skeletonWidthClass(width) }></div>
+}
+
+// SkeletonCircle renders a circular skeleton placeholder.
+templ SkeletonCircle(size string) {
+	<div class={ "skeleton skeleton--circle", skeletonSizeClass(size) }></div>
+}
+
+// SkeletonRect renders a rectangular skeleton placeholder.
+templ SkeletonRect(height string) {
+	<div class={ "skeleton skeleton--rect", skeletonHeightClass(height) }></div>
+}
+
+// SkeletonCard renders a skeleton for a metric card.
+templ SkeletonCard() {
+	<div class="skeleton-card">
+		<div class="skeleton skeleton--line skeleton--w-1/3"></div>
+		<div class="skeleton skeleton--line skeleton--w-1/2 skeleton--lg"></div>
+		<div class="skeleton skeleton--line skeleton--w-2/3"></div>
+	</div>
+}
+
+// SkeletonMessage renders a skeleton for a chat message.
+templ SkeletonMessage() {
+	<div class="skeleton-message">
+		<div class="skeleton-message__header">
+			<div class="skeleton skeleton--circle skeleton--sm"></div>
+			<div class="skeleton skeleton--line skeleton--w-20"></div>
+		</div>
+		<div class="skeleton-message__content">
+			<div class="skeleton skeleton--line skeleton--w-full"></div>
+			<div class="skeleton skeleton--line skeleton--w-3/4"></div>
+		</div>
+	</div>
+}
+
+// SkeletonConversation renders a skeleton for a conversation list item.
+templ SkeletonConversation() {
+	<div class="skeleton-conversation">
+		<div class="skeleton skeleton--line skeleton--w-2/3"></div>
+		<div class="skeleton skeleton--line skeleton--w-1/2 skeleton--sm"></div>
+	</div>
+}
+
+// SkeletonChatMessages renders multiple skeleton messages.
+templ SkeletonChatMessages() {
+	<div class="skeleton-messages">
+		@SkeletonMessage()
+		@SkeletonMessage()
+		@SkeletonMessage()
+	</div>
+}
+
+// SkeletonConversationList renders multiple skeleton conversations.
+templ SkeletonConversationList() {
+	<div class="skeleton-conversations">
+		@SkeletonConversation()
+		@SkeletonConversation()
+		@SkeletonConversation()
+		@SkeletonConversation()
+	</div>
+}
+
+// Helper functions for skeleton classes
+func skeletonWidthClass(width string) string {
+	switch width {
+	case "full":
+		return "skeleton--w-full"
+	case "3/4":
+		return "skeleton--w-3/4"
+	case "2/3":
+		return "skeleton--w-2/3"
+	case "1/2":
+		return "skeleton--w-1/2"
+	case "1/3":
+		return "skeleton--w-1/3"
+	case "1/4":
+		return "skeleton--w-1/4"
+	default:
+		return "skeleton--w-full"
+	}
+}
+
+func skeletonSizeClass(size string) string {
+	switch size {
+	case "sm":
+		return "skeleton--sm"
+	case "lg":
+		return "skeleton--lg"
+	default:
+		return ""
+	}
+}
+
+func skeletonHeightClass(height string) string {
+	switch height {
+	case "sm":
+		return "skeleton--h-sm"
+	case "lg":
+		return "skeleton--h-lg"
+	default:
+		return "skeleton--h-md"
+	}
+}

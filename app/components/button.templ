@@ -1,0 +1,106 @@
+package components
+
+// ButtonProps defines the properties for button components.
+type ButtonProps struct {
+	Variant  string // primary, secondary, ghost, danger
+	Size     string // sm, md, lg
+	Type     string // button, submit
+	Disabled bool
+	Loading  bool
+	Class    string
+}
+
+// ButtonDefaults returns a ButtonProps with sensible defaults.
+func ButtonDefaults() ButtonProps {
+	return ButtonProps{
+		Variant: "primary",
+		Size:    "md",
+		Type:    "button",
+	}
+}
+
+// buttonClasses generates the CSS classes for a button.
+func buttonClasses(props ButtonProps) string {
+	classes := "btn"
+
+	// Variant
+	switch props.Variant {
+	case "secondary":
+		classes += " btn--secondary"
+	case "ghost":
+		classes += " btn--ghost"
+	case "danger":
+		classes += " btn--danger"
+	default:
+		classes += " btn--primary"
+	}
+
+	// Size
+	switch props.Size {
+	case "sm":
+		classes += " btn--sm"
+	case "lg":
+		classes += " btn--lg"
+	}
+
+	// States
+	if props.Loading {
+		classes += " btn--loading"
+	}
+	if props.Disabled {
+		classes += " btn--disabled"
+	}
+
+	// Custom classes
+	if props.Class != "" {
+		classes += " " + props.Class
+	}
+
+	return classes
+}
+
+// Button renders a styled button element.
+templ Button(props ButtonProps) {
+	<button
+		type={ props.Type }
+		class={ buttonClasses(props) }
+		disabled?={ props.Disabled || props.Loading }
+	>
+		{ children... }
+	</button>
+}
+
+// LinkButton renders a styled anchor element that looks like a button.
+templ LinkButton(props ButtonProps, href string) {
+	<a
+		href={ templ.SafeURL(href) }
+		class={ buttonClasses(props) }
+	>
+		{ children... }
+	</a>
+}
+
+// IconButton renders a button optimized for icons.
+templ IconButton(props ButtonProps) {
+	<button
+		type={ props.Type }
+		class={ buttonClasses(props) + " btn--icon" }
+		disabled?={ props.Disabled || props.Loading }
+	>
+		{ children... }
+	</button>
+}
+
+// SubmitButton is a convenience wrapper for submit buttons.
+templ SubmitButton(props ButtonProps) {
+	@Button(ButtonProps{
+		Variant:  props.Variant,
+		Size:     props.Size,
+		Type:     "submit",
+		Disabled: props.Disabled,
+		Loading:  props.Loading,
+		Class:    props.Class,
+	}) {
+		{ children... }
+	}
+}

@@ -1,0 +1,135 @@
+package components
+
+// TableColumn defines a column in the table.
+type TableColumn struct {
+	Key   string
+	Label string
+	Class string
+}
+
+// TableProps defines properties for table components.
+type TableProps struct {
+	Columns  []TableColumn
+	Striped  bool
+	Hoverable bool
+	Class    string
+}
+
+// tableClasses generates CSS classes for the table.
+func tableClasses(props TableProps) string {
+	classes := "table"
+	if props.Striped {
+		classes += " table--striped"
+	}
+	if props.Class != "" {
+		classes += " " + props.Class
+	}
+	return classes
+}
+
+// Table renders a table container.
+templ Table(props TableProps) {
+	<div class="table-container">
+		<table class={ tableClasses(props) }>
+			{ children... }
+		</table>
+	</div>
+}
+
+// TableHead renders the table header.
+templ TableHead(columns []TableColumn) {
+	<thead>
+		<tr>
+			for _, col := range columns {
+				<th class={ col.Class }>{ col.Label }</th>
+			}
+		</tr>
+	</thead>
+}
+
+// TableBody renders the table body.
+templ TableBody() {
+	<tbody>
+		{ children... }
+	</tbody>
+}
+
+// TableRow renders a table row.
+templ TableRow() {
+	<tr>
+		{ children... }
+	</tr>
+}
+
+// TableCell renders a table cell.
+templ TableCell(class string) {
+	<td class={ class }>
+		{ children... }
+	</td>
+}
+
+// TableEmpty renders an empty state for tables.
+templ TableEmpty(message string, colspan int) {
+	<tr>
+		<td colspan={ intToColspan(colspan) } class="table__empty">
+			{ message }
+		</td>
+	</tr>
+}
+
+// EmptyState renders a centered empty state component.
+templ EmptyState(title, description string) {
+	<div class="empty-state">
+		<svg class="empty-state__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+			<path d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"/>
+		</svg>
+		<h3 class="empty-state__title">{ title }</h3>
+		if description != "" {
+			<p class="empty-state__description">{ description }</p>
+		}
+		if templ.GetChildren(ctx) != nil {
+			<div class="empty-state__action">
+				{ children... }
+			</div>
+		}
+	</div>
+}
+
+// intToColspan converts an int to a string for colspan attribute.
+func intToColspan(n int) string {
+	if n <= 0 {
+		return "1"
+	}
+	// Simple conversion for reasonable table sizes
+	digits := []byte{}
+	for n > 0 {
+		digits = append([]byte{byte('0' + n%10)}, digits...)
+		n /= 10
+	}
+	return string(digits)
+}
+
+// Spinner renders a loading spinner.
+templ Spinner(size string) {
+	<span class={ spinnerClass(size) }></span>
+}
+
+// spinnerClass generates CSS classes for the spinner.
+func spinnerClass(size string) string {
+	base := "spinner"
+	switch size {
+	case "sm":
+		return base + " spinner--sm"
+	case "lg":
+		return base + " spinner--lg"
+	default:
+		return base
+	}
+}
+
+// LoadingOverlay renders a loading overlay for containers.
+templ LoadingOverlay() {
+	<div class="loading-overlay">
+		@Spinner("lg")
+	</div>
+}
