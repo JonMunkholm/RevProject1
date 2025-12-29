@@ -12,7 +12,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/JonMunkholm/RevProject1/internal/config"
 	"github.com/JonMunkholm/RevProject1/internal/database"
+	"github.com/JonMunkholm/RevProject1/internal/middleware"
 	"github.com/google/uuid"
 	"github.com/lib/pq"
 	"github.com/sqlc-dev/pqtype"
@@ -60,11 +62,29 @@ func (l *Login) SignIn(w http.ResponseWriter, r *http.Request) {
 		return l.DB.GetUserByEmailGlobal(ctx, email)
 	})
 	if err != nil {
+		middleware.LogSecurityEvent(middleware.SecurityEvent{
+			Timestamp: time.Now(),
+			EventType: middleware.EventLoginFailure,
+			IP:        middleware.ExtractIP(r),
+			UserAgent: r.UserAgent(),
+			Endpoint:  r.URL.Path,
+			Email:     email,
+			Reason:    "user not found",
+		})
 		RespondWithError(w, http.StatusUnauthorized, "incorrect email or password", err)
 		return
 	}
 
 	if err := CheckPasswordHash(password, user.PasswordHash); err != nil {
+		middleware.LogSecurityEvent(middleware.SecurityEvent{
+			Timestamp: time.Now(),
+			EventType: middleware.EventLoginFailure,
+			IP:        middleware.ExtractIP(r),
+			UserAgent: r.UserAgent(),
+			Endpoint:  r.URL.Path,
+			Email:     email,
+			Reason:    "invalid password",
+		})
 		RespondWithError(w, http.StatusUnauthorized, "incorrect email or password", err)
 		return
 	}
@@ -73,6 +93,15 @@ func (l *Login) SignIn(w http.ResponseWriter, r *http.Request) {
 		RespondWithError(w, http.StatusInternalServerError, "failed to issue session", err)
 		return
 	}
+
+	middleware.LogSecurityEvent(middleware.SecurityEvent{
+		Timestamp: time.Now(),
+		EventType: middleware.EventLoginSuccess,
+		IP:        middleware.ExtractIP(r),
+		UserAgent: r.UserAgent(),
+		Endpoint:  r.URL.Path,
+		Email:     email,
+	})
 
 	if isHTMXRequest(r) {
 		w.Header().Set("HX-Redirect", "/app/dashboard")
@@ -115,6 +144,15 @@ func (l *Login) Register(w http.ResponseWriter, r *http.Request) {
 
 	company, err := l.DB.CreateCompany(ctx, companyName)
 	if err != nil {
+		middleware.LogSecurityEvent(middleware.SecurityEvent{
+			Timestamp: time.Now(),
+			EventType: middleware.EventRegisterFailure,
+			IP:        middleware.ExtractIP(r),
+			UserAgent: r.UserAgent(),
+			Endpoint:  r.URL.Path,
+			Email:     email,
+			Reason:    "company creation failed",
+		})
 		status, msg, wrapErr := classifyUniqueViolation(err, "company already exists", "failed to create company", err)
 		RespondWithError(w, status, msg, wrapErr)
 		return
@@ -131,6 +169,15 @@ func (l *Login) Register(w http.ResponseWriter, r *http.Request) {
 			// best effort cleanup; log for debugging
 			err = fmt.Errorf("create user failed: %w (cleanup error: %v)", err, delErr)
 		}
+		middleware.LogSecurityEvent(middleware.SecurityEvent{
+			Timestamp: time.Now(),
+			EventType: middleware.EventRegisterFailure,
+			IP:        middleware.ExtractIP(r),
+			UserAgent: r.UserAgent(),
+			Endpoint:  r.URL.Path,
+			Email:     email,
+			Reason:    "user creation failed",
+		})
 		status, msg, wrapErr := classifyUniqueViolation(origErr, "email already registered", "failed to create user", err)
 		RespondWithError(w, status, msg, wrapErr)
 		return
@@ -208,7 +255,7 @@ func (l *Login) issueSession(w http.ResponseWriter, r *http.Request, user databa
 		return err
 	}
 
-	secureCookie := r.TLS != nil
+	secureCookie := isSecureRequest(r)
 	accessCookie := &http.Cookie{
 		Name:     "access_token",
 		Value:    accessToken,
@@ -239,6 +286,14 @@ func (l *Login) Refresh(w http.ResponseWriter, r *http.Request) {
 
 	refreshCookie, err := r.Cookie("refresh_token")
 	if err != nil || refreshCookie.Value == "" {
+		middleware.LogSecurityEvent(middleware.SecurityEvent{
+			Timestamp: time.Now(),
+			EventType: middleware.EventRefreshFailure,
+			IP:        middleware.ExtractIP(r),
+			UserAgent: r.UserAgent(),
+			Endpoint:  r.URL.Path,
+			Reason:    "token missing",
+		})
 		RespondWithError(w, http.StatusUnauthorized, "refresh token missing", err)
 		return
 	}
@@ -260,18 +315,42 @@ func (l *Login) Refresh(w http.ResponseWriter, r *http.Request) {
 			status = http.StatusUnauthorized
 			msg = "invalid refresh token"
 		}
+		middleware.LogSecurityEvent(middleware.SecurityEvent{
+			Timestamp: time.Now(),
+			EventType: middleware.EventRefreshFailure,
+			IP:        middleware.ExtractIP(r),
+			UserAgent: r.UserAgent(),
+			Endpoint:  r.URL.Path,
+			Reason:    "invalid token",
+		})
 		RespondWithError(w, status, msg, err)
 		return
 	}
 	defer l.revokeRefreshToken(ctx, tokenRecord.ID)
 
 	if tokenRecord.RevokedAt.Valid {
+		middleware.LogSecurityEvent(middleware.SecurityEvent{
+			Timestamp: time.Now(),
+			EventType: middleware.EventRefreshFailure,
+			IP:        middleware.ExtractIP(r),
+			UserAgent: r.UserAgent(),
+			Endpoint:  r.URL.Path,
+			Reason:    "token revoked",
+		})
 		RespondWithError(w, http.StatusUnauthorized, "refresh token revoked", errors.New("refresh token revoked"))
 		return
 	}
 
 	now := time.Now().UTC()
 	if now.After(tokenRecord.ExpiresAt) {
+		middleware.LogSecurityEvent(middleware.SecurityEvent{
+			Timestamp: time.Now(),
+			EventType: middleware.EventRefreshFailure,
+			IP:        middleware.ExtractIP(r),
+			UserAgent: r.UserAgent(),
+			Endpoint:  r.URL.Path,
+			Reason:    "token expired",
+		})
 		RespondWithError(w, http.StatusUnauthorized, "refresh token expired", errors.New("refresh token expired"))
 		return
 	}
@@ -282,16 +361,28 @@ func (l *Login) Refresh(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		status := http.StatusUnauthorized
 		msg := "failed to load user"
+		reason := "user lookup failed"
 		switch {
 		case errors.Is(err, sql.ErrNoRows):
 			msg = "user not found"
+			reason = "user not found"
 		case errors.Is(err, errUserInactive):
 			status = http.StatusForbidden
 			msg = "user inactive"
+			reason = "user inactive"
 		case errors.Is(err, errCompanyInactive):
 			status = http.StatusForbidden
 			msg = "company inactive"
+			reason = "company inactive"
 		}
+		middleware.LogSecurityEvent(middleware.SecurityEvent{
+			Timestamp: time.Now(),
+			EventType: middleware.EventRefreshFailure,
+			IP:        middleware.ExtractIP(r),
+			UserAgent: r.UserAgent(),
+			Endpoint:  r.URL.Path,
+			Reason:    reason,
+		})
 		RespondWithError(w, status, msg, err)
 		return
 	}
@@ -305,7 +396,7 @@ func (l *Login) Refresh(w http.ResponseWriter, r *http.Request) {
 }
 
 func (l *Login) Logout(w http.ResponseWriter, r *http.Request) {
-	secureCookie := r.TLS != nil
+	secureCookie := isSecureRequest(r)
 	clearCookie := func(name, path string) {
 		http.SetCookie(w, &http.Cookie{
 			Name:     name,
@@ -521,4 +612,14 @@ func nullString(value string) sql.NullString {
 		return sql.NullString{}
 	}
 	return sql.NullString{String: value, Valid: true}
+}
+
+func isSecureRequest(r *http.Request) bool {
+	if r.TLS != nil {
+		return true
+	}
+	if strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https") {
+		return true
+	}
+	return config.ForceSecureCookies
 }

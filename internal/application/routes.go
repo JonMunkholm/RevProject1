@@ -7,6 +7,7 @@ import (
 	"github.com/JonMunkholm/RevProject1/internal/auth"
 	"github.com/JonMunkholm/RevProject1/internal/database"
 	"github.com/JonMunkholm/RevProject1/internal/handler"
+	appmiddleware "github.com/JonMunkholm/RevProject1/internal/middleware"
 	"github.com/a-h/templ"
 	"github.com/go-chi/chi"
 	"github.com/go-chi/chi/middleware"
@@ -40,8 +41,9 @@ func (a *App) loadRoutes() {
 			r.Get("/review", a.dashboardPage("review"))
 			r.Get("/customers", a.dashboardPage("customers"))
 			r.Get("/products", a.dashboardPage("products"))
+			r.Get("/queries", a.dashboardPage("queries"))
+			r.Get("/migrations", a.dashboardPage("migrations"))
 			r.Route("/settings", a.loadSettingsRoutes)
-			r.Route("/chat", a.loadChatRoutes)
 		})
 
 		r.Route("/api", func(r chi.Router) {
@@ -49,6 +51,10 @@ func (a *App) loadRoutes() {
 			r.Route("/review", a.loadReviewRoutes)
 			r.Route("/companies", a.loadCompanyRoutes)
 			r.Route("/admin", a.loadAdminRoutes)
+			r.Route("/queries", func(r chi.Router) {
+				r.Use(auth.RequireCompanyRole(auth.RoleViewer))
+				a.loadQueryRoutes(r)
+			})
 			r.Route("/ai", func(r chi.Router) {
 				r.Use(auth.RequireCompanyRole(auth.RoleViewer))
 				a.loadAIRoutes(r)
@@ -101,10 +107,17 @@ func (a *App) loadAuthRoutes(r chi.Router) {
 		JWTSecret: a.jwtSecret,
 	}
 
-	r.Post("/login", loginHandler.SignIn)
-	r.Post("/register", loginHandler.Register)
-	r.Post("/refresh", loginHandler.Refresh)
-	r.Post("/logout", loginHandler.Logout)
+	// Apply rate limiting if enabled
+	if a.loginLimiter != nil {
+		r.With(appmiddleware.RateLimit(a.loginLimiter)).Post("/login", loginHandler.SignIn)
+		r.With(appmiddleware.RateLimit(a.registerLimiter)).Post("/register", loginHandler.Register)
+		r.With(appmiddleware.RateLimit(a.refreshLimiter)).Post("/refresh", loginHandler.Refresh)
+	} else {
+		r.Post("/login", loginHandler.SignIn)
+		r.Post("/register", loginHandler.Register)
+		r.Post("/refresh", loginHandler.Refresh)
+	}
+	r.Post("/logout", loginHandler.Logout) // No rate limit on logout
 }
 
 func (a *App) dashboardPage(active string) http.HandlerFunc {
@@ -113,6 +126,14 @@ func (a *App) dashboardPage(active string) http.HandlerFunc {
 		switch active {
 		case "review":
 			component = pages.ReviewPage(active)
+		case "customers":
+			component = pages.CustomersPage(active)
+		case "products":
+			component = pages.ProductsPage(active)
+		case "queries":
+			component = pages.QueriesPage(active)
+		case "migrations":
+			component = pages.MigrationsPage(active)
 		default:
 			component = pages.DashboardPage(active)
 		}
@@ -126,6 +147,16 @@ func (a *App) loadDashboardRoutes(r chi.Router) {
 
 func (a *App) loadReviewRoutes(r chi.Router) {
 	bindDashboardSummary(a.db, r)
+}
+
+func (a *App) loadQueryRoutes(r chi.Router) {
+	qb := &handler.QueryBuilder{
+		AIClient: a.aiClient,
+		DB:       a.rawDB,
+	}
+	r.Post("/generate", qb.GenerateSQL)
+	r.Post("/execute", qb.ExecuteQuery)
+	r.Post("/download", qb.DownloadCSV)
 }
 
 func bindDashboardSummary(db *database.Queries, r chi.Router) {
@@ -181,20 +212,6 @@ func (a *App) loadAIRoutes(r chi.Router) {
 	r.Post("/providers/{providerID}/credential", aiHandler.UpsertProviderCredential)
 	r.Post("/providers/{providerID}/credential/test", aiHandler.TestProviderCredential)
 	r.Delete("/credentials/{credentialID}", aiHandler.DeleteProviderCredential)
-}
-
-func (a *App) loadChatRoutes(r chi.Router) {
-	if a.aiHandler == nil {
-		a.aiHandler = a.newAIHandler()
-	}
-
-	r.Use(auth.RequireCompanyRole(auth.RoleViewer))
-
-	r.Get("/", a.chatPage())
-	r.Get("/conversations", a.aiHandler.ChatListSessions)
-	r.Get("/conversations/{sessionID}", a.aiHandler.ChatLoadSession)
-	r.Post("/conversations", a.aiHandler.ChatCreateSession)
-	r.Post("/conversations/{sessionID}/messages", a.aiHandler.ChatAppendMessage)
 }
 
 func (a *App) loadUserRoutes(r chi.Router) {

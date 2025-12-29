@@ -15,8 +15,10 @@ import (
 	geminiProvider "github.com/JonMunkholm/RevProject1/internal/ai/provider/gemini"
 	openaiProvider "github.com/JonMunkholm/RevProject1/internal/ai/provider/openai"
 	aitool "github.com/JonMunkholm/RevProject1/internal/ai/tool"
+	"github.com/JonMunkholm/RevProject1/internal/config"
 	"github.com/JonMunkholm/RevProject1/internal/database"
 	"github.com/JonMunkholm/RevProject1/internal/handler"
+	"github.com/JonMunkholm/RevProject1/internal/middleware"
 	_ "github.com/lib/pq"
 )
 
@@ -28,6 +30,7 @@ const (
 type App struct {
 	router            http.Handler
 	db                *database.Queries
+	rawDB             *sql.DB
 	jwtSecret         string
 	port              string
 	credentialStore   ai.CredentialStore
@@ -44,28 +47,63 @@ type App struct {
 	aiAPIKey          string
 	providerCatalog   *catalogProvider.Loader
 	aiHandler         *handler.AI
+
+	// Rate limiters for auth endpoints
+	loginLimiter    *middleware.IPRateLimiter
+	registerLimiter *middleware.IPRateLimiter
+	refreshLimiter  *middleware.IPRateLimiter
 }
 
-// Define app struct and load routes
-func New() *App {
-	app := &App{
-		db:        dbConnect(),
-		jwtSecret: setValEnv("JWT_SECRET"),
-		port:      setValEnv("PORT"),
+// New creates a new App instance with all dependencies initialized.
+// Returns an error if any required configuration is missing or invalid.
+func New() (*App, error) {
+	db, rawDB, err := dbConnect()
+	if err != nil {
+		return nil, fmt.Errorf("database connection: %w", err)
 	}
 
-	app.initAI()
+	jwtSecret, err := requireEnv("JWT_SECRET")
+	if err != nil {
+		return nil, err
+	}
+
+	port, err := requireEnv("PORT")
+	if err != nil {
+		return nil, err
+	}
+
+	app := &App{
+		db:        db,
+		rawDB:     rawDB,
+		jwtSecret: jwtSecret,
+		port:      port,
+	}
+
+	if err := app.initAI(); err != nil {
+		return nil, fmt.Errorf("AI initialization: %w", err)
+	}
+
+	// Initialize rate limiters for auth endpoints
+	if config.RateLimitEnabled {
+		app.loginLimiter = middleware.NewIPRateLimiter(config.RateLimitLogin, 2)
+		app.registerLimiter = middleware.NewIPRateLimiter(config.RateLimitRegister, 1)
+		app.refreshLimiter = middleware.NewIPRateLimiter(config.RateLimitRefresh, 3)
+	}
 
 	app.loadRoutes()
 
-	return app
+	return app, nil
 }
 
-func (a *App) initAI() {
-	key := setValEnv("AI_CREDENTIAL_KEY")
+func (a *App) initAI() error {
+	key, err := requireEnv("AI_CREDENTIAL_KEY")
+	if err != nil {
+		return err
+	}
+
 	cipher, err := ai.NewAESCipherFromBase64(key)
 	if err != nil {
-		log.Fatalf("invalid AI_CREDENTIAL_KEY: %v", err)
+		return fmt.Errorf("invalid AI_CREDENTIAL_KEY: %w", err)
 	}
 
 	a.aiSystemPrompt = os.Getenv("AI_SYSTEM_PROMPT")
@@ -96,15 +134,15 @@ func (a *App) initAI() {
 	}
 
 	openAIConfig := openaiProvider.Config{
-		BaseURL:      os.Getenv("OPENAI_API_BASE"),
-		Model:        os.Getenv("OPENAI_MODEL"),
+		BaseURL:      getEnvOrDefault("OPENAI_API_BASE", "https://api.openai.com/v1"),
+		Model:        getEnvOrDefault("OPENAI_MODEL", "gpt-4o"),
 		SystemPrompt: a.aiSystemPrompt,
 		Logger:       clientLogger,
 	}
 
 	geminiConfig := geminiProvider.Config{
-		BaseURL: os.Getenv("GEMINI_API_BASE"),
-		Model:   os.Getenv("GEMINI_MODEL"),
+		BaseURL: getEnvOrDefault("GEMINI_API_BASE", "https://generativelanguage.googleapis.com/v1beta"),
+		Model:   getEnvOrDefault("GEMINI_MODEL", "gemini-pro"),
 		Logger:  clientLogger,
 	}
 
@@ -119,13 +157,12 @@ func (a *App) initAI() {
 		Tools: []ai.Tool{
 			aitool.ListCustomersTool{Store: a.db},
 			aitool.FetchCustomerTool{Store: a.db},
-			aitool.CreateTicketTool{},
 		},
 	}
 
 	client, err := ai.NewClient(clientConfig)
 	if err != nil {
-		log.Fatalf("failed to initialise ai client: %v", err)
+		return fmt.Errorf("failed to initialise ai client: %w", err)
 	}
 	a.aiClient = client
 
@@ -135,6 +172,7 @@ func (a *App) initAI() {
 	}
 
 	a.providerCatalog = catalogProvider.NewLoader(a.db, catalogCacheTTL)
+	return nil
 }
 
 func (a *App) newAIHandler() *handler.AI {
@@ -197,30 +235,36 @@ func (a *App) Start(ctx context.Context) error {
 	}
 }
 
-func dbConnect() *database.Queries {
+func dbConnect() (*database.Queries, *sql.DB, error) {
 	dbURL := os.Getenv("DB_URL")
 	if dbURL == "" {
-		log.Fatal("DB_URL must be set")
+		return nil, nil, fmt.Errorf("DB_URL must be set")
 	}
 
 	db, err := sql.Open("postgres", dbURL)
 	if err != nil {
-		log.Fatal("Failed to open DB:", err)
+		return nil, nil, fmt.Errorf("failed to open DB: %w", err)
 	}
 
 	// Verify connection is alive
 	if err := db.Ping(); err != nil {
-		log.Fatal("Failed to ping DB:", err)
+		return nil, nil, fmt.Errorf("failed to ping DB: %w", err)
 	}
 
-	return database.New(db)
+	return database.New(db), db, nil
 }
 
-func setValEnv(req string) string {
-	val := os.Getenv(req)
+func requireEnv(name string) (string, error) {
+	val := os.Getenv(name)
 	if val == "" {
-		log.Fatalf("%v must be set", req)
+		return "", fmt.Errorf("%s must be set", name)
 	}
+	return val, nil
+}
 
-	return val
+func getEnvOrDefault(name, defaultValue string) string {
+	if val := os.Getenv(name); val != "" {
+		return val
+	}
+	return defaultValue
 }

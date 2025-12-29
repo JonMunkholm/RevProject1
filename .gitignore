@@ -5,8 +5,8 @@ Taskfile.yaml
 .cache/
 # Build artifacts
 bin/
-docs/
 dist/
+revproject1
 tmp/
 coverage/
 *.out
